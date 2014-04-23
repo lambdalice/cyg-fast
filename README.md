@@ -64,13 +64,19 @@ New features
 
 cyg-fast finds all depending packages before downloading and installing.
 
+### Resume installation when downloading fails
+
+Type ```cyg-fast resume-install``` to resume interrupted downloading.
+
+You don't need to be annoy with an unstable internet connection...
+
 ### Parallel downloading with aria2
 
 Aria2 is an advances file downloading tool that allows you to download files with faster speed.
 
 cyg-fast provides multi-connection downloading using aria2.
 
-You can change the maximum number of connections with the ```--max-count``` option.
+You can change the maximum number of connections with the ```--max-connections``` option.
 
 ### True multi-architecture support
 
