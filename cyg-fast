@@ -26,6 +26,7 @@
 # 
 
 cyg_fast=$(cd $(dirname ${BASH_SOURCE:-$0}); pwd)/$(basename $0)
+
 TRUSTEDKEYS=( CYGWIN CYGWINPORTS );
 # ./cygwin.pub
 # ------------
@@ -145,7 +146,7 @@ function findworkspace()
   fetch_trustedkeys
 }
 
-function download_and_varify ()
+function download_and_verify ()
 {
   "${WGET[@]}" -N "$1" || return 1
   [ -e "${1##*/}" ] || return 1
@@ -193,8 +194,8 @@ function setupini_download ()
   files_backup setup.ini setup.ini.sig setup.bz2 setup.bz2.sig
   
   while true; do
-    download_and_varify "$mirror/$arch/setup.bz2" && { bunzip2 -k setup.bz2 && mv setup setup.ini || rm -f setup.bz2; }
-    download_and_varify "$mirror/$arch/setup.ini" || break
+    download_and_verify "$mirror/$arch/setup.bz2" && { bunzip2 -k setup.bz2 && mv setup setup.ini || rm -f setup.bz2; }
+    download_and_verify "$mirror/$arch/setup.ini" || break
     
     files_backup_clean setup.ini setup.ini.sig setup.bz2 setup.bz2.sig
     popd
@@ -693,88 +694,91 @@ function cyg-fast-install ()
     [ $checkdep -ne 0 ] || echo -n "Resolving dependencies..."
 
     for pkg do
-    echo -n "."
-    local already="$(grep -c "^$pkg " /etc/setup/installed.db)"
-    if [ $already -ge 1 ]; then
-      echo; echo Package $pkg is already installed, skipping
-      continue
-    fi
+      echo -n "."
+      local already="$(grep -c "^$pkg " /etc/setup/installed.db)"
+      if [ $already -ge 1 ]; then
+        echo; echo Package $pkg is already installed, skipping
+        continue
+      fi
 
-    # look for package and save desc file
+      # look for package and save desc file
 
-    mkdir -p "release/$pkg"
-    awk > "release/$pkg/desc" -v package="$pkg" \
-      'BEGIN{RS="\n\n@ "; FS="\n"} {if ($1 == package) {desc = $0; px++}} \
-       END {if (px == 1 && desc != "") print desc; else print "Package not found"}' \
-       setup.ini
-    local desc="$(< "release/$pkg/desc")"
-    if [ "$desc" = "Package not found" ]; then
-      echo; echo Package $pkg not found or ambiguous name, exiting
-      rm -r "release/$pkg"
-      exit 1
-    fi
+      mkdir -p "release/$pkg"
+      awk > "release/$pkg/desc" -v package="$pkg" \
+        'BEGIN{RS="\n\n@ "; FS="\n"} {if ($1 == package) {desc = $0; px++}} \
+         END {if (px == 1 && desc != "") print desc; else print "Package not found"}' \
+         setup.ini
+      local desc="$(< "release/$pkg/desc")"
+      if [ "$desc" = "Package not found" ]; then
+        echo; echo Package $pkg not found or ambiguous name, exiting
+        rm -r "release/$pkg"
+        exit 1
+      fi
 
-    # queue current package
-    local install="$(awk '/^install: / { print $2; exit }' "release/$pkg/desc")"
-    echo "$mirror/$install" >> /tmp/cyg-fast-downloads
-    echo "  dir=release/$pkg" >> /tmp/cyg-fast-downloads
-    echo $pkg >> /tmp/cyg-fast-packages
+      # queue current package
 
-    # resolve dependencies
+      local install="$(awk '/^install: / { print $2; exit }' "release/$pkg/desc")"
+      echo "$mirror/$install" >> /tmp/cyg-fast-downloads
+      echo "  dir=release/$pkg" >> /tmp/cyg-fast-downloads
+      echo $pkg >> /tmp/cyg-fast-packages
 
-    local requires="$(grep "^requires: " "release/$pkg/desc" | sed -re 's/^requires: *(.*[^ ]) */\1/g' -e 's/ +/ /g')"
-    local warn=0
-    if [ -n "$requires" ]; then
-      for package in $requires; do
-        local already="$(grep -c "^$package " /etc/setup/installed.db)" 
-        local installing="$( grep -c "^$package" /tmp/cyg-fast-packages)"
-        if [ $already = 0 ] && [ $installing = 0 ]; then
-          $cyg_fast -X -u --checkdep install $package
-          if [ $? -ne 0 ]; then warn=1; fi
-        fi
-      done
-    fi
-    if [ $warn -ne 0 ]; then
-      echo "Warning: some required packages do not install, continuing"
-    fi
+      # resolve dependencies
 
-    if [ -z "$install" ]; then
-      echo "Could not find \"install\" in package description: obsolete package?"
-      exit 1
-    fi
+      local requires="$(grep "^requires: " "release/$pkg/desc" | sed -re 's/^requires: *(.*[^ ]) */\1/g' -e 's/ +/ /g')"
+      local warn=0
+      if [ -n "$requires" ]; then
+        for package in $requires; do
+          local already="$(grep -c "^$package " /etc/setup/installed.db)" 
+          local installing="$( grep -c "^$package" /tmp/cyg-fast-packages)"
+          if [ $already = 0 ] && [ $installing = 0 ]; then
+            $cyg_fast -X -u --checkdep install $package
+            if [ $? -ne 0 ]; then warn=1; fi
+          fi
+        done
+      fi
+      if [ $warn -ne 0 ]; then
+        echo "Warning: some required packages do not install, continuing"
+      fi
+
+      if [ -z "$install" ]; then
+        echo "Could not find \"install\" in package description: obsolete package?"
+        exit 1
+      fi
     
-    # exit when recursively called
-    if [ $checkdep = 1 ]; then
-      exit 0
-    fi
+      # exit when recursively called
+
+      if [ $checkdep = 1 ]; then
+        exit 0
+      fi
 
     done
 
     [ -f "/tmp/cyg-fast-packages" ] || exit
-    echo ""
-    echo "Following packages will be installed:"
+    echo; echo "Following packages will be installed:"
     for p in $( cat /tmp/cyg-fast-packages ); do
       echo -n $p " "
     done
-    echo ""
-    read -p "Do you wish to continue? [y/N] " yn
+    echo; read -p "Do you wish to continue? [y/N] " yn
     case $yn in
       [Yy]* ) ;;
       * ) quit;;
     esac
 
     # download all
+
     echo "Start downloading..."
-    aria2c --conditional-get --deferred-input=true --input-file=/tmp/cyg-fast-downloads -x $maxcount
+    aria2c --conditional-get --deferred-input --input-file /tmp/cyg-fast-downloads -x $maxcount
 
     # unpack all
+
     for pkg in $( cat /tmp/cyg-fast-packages ); do
 
       install="$(awk '/^install: / { print $2; exit }' "release/$pkg/desc")"
       file="$(basename "$install")"
-      
       cd "release/$pkg"
+      
       # check the md5
+
       local digest="$(awk '/^install: / { print $4; exit }' "desc")"
       local digactual="$(md5sum $file | awk '{print $1}')"
       if [ "$digest" != "$digactual" ]; then
