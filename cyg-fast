@@ -25,6 +25,7 @@
 # THE SOFTWARE.
 # 
 
+cyg_fast=$(cd $(dirname ${BASH_SOURCE:-$0}); pwd)/$(basename $0)
 TRUSTEDKEYS=( CYGWIN CYGWINPORTS );
 # ./cygwin.pub
 # ------------
@@ -46,33 +47,34 @@ TRUSTEDKEY_CYGWINPORTS_URL_LATEST="http://cygwinports.org/ports.gpg"
 
 # this script requires some packages
 
-WGET="$( which wget 2>/dev/null )"
 TAR="$(  which tar  2>/dev/null )"
 GAWK="$( which awk  2>/dev/null )"
 GPGV="$( which gpgv 2>/dev/null )"
 GPG="$(  which gpg  2>/dev/null )"
-if [ -z "$WGET" -o -z "$TAR" -o -z "$GAWK" ]; then
-  echo You must install wget, tar and gawk to use apt-cyg.
+WGET="$(  which wget 2>/dev/null )"
+ARIA2C="$(  which aria2c  2>/dev/null )"
+if [ -z "$ARIA2C" -o -z "$WGET" -o -z "$TAR" -o -z "$GAWK" ]; then
+  echo You must install aria2, wget, tar and gawk to use cyg-fast.
   exit 1
 fi
 
 function usage()
 {
-  echo apt-cyg: Installs and removes Cygwin packages.
-  echo "  \"apt-cyg install <package names>\" to install packages"
-  echo "  \"apt-cyg remove <package names>\" to remove packages"
-  echo "  \"apt-cyg update\" to update setup.ini"
-  echo "  \"apt-cyg show\" to show installed packages"
-  echo "  \"apt-cyg find <patterns>\" to find packages matching patterns"
-  echo "  \"apt-cyg describe <patterns>\" to describe packages matching patterns"
-  echo "  \"apt-cyg packageof <commands or files>\" to locate parent packages"
-  echo "  \"apt-cyg pathof <cache|mirror|mirrordir|cache/mirrordir|setup.ini>\""
+  echo cyg-fast: Installs and removes Cygwin packages.
+  echo "  \"cyg-fast install <package names>\" to install packages"
+  echo "  \"cyg-fast remove <package names>\" to remove packages"
+  echo "  \"cyg-fast update\" to update setup.ini"
+  echo "  \"cyg-fast show\" to show installed packages"
+  echo "  \"cyg-fast find <patterns>\" to find packages matching patterns"
+  echo "  \"cyg-fast describe <patterns>\" to describe packages matching patterns"
+  echo "  \"cyg-fast packageof <commands or files>\" to locate parent packages"
+  echo "  \"cyg-fast pathof <cache|mirror|mirrordir|cache/mirrordir|setup.ini>\""
   echo "                                                          to show path"
-  echo "  \"apt-cyg key-add <files> ...\" to add keys contained in <files>"
-  echo "  \"apt-cyg key-del <keyids> ...\" to remove keys <keyids>"
-  echo "  \"apt-cyg key-list\" to list keys"
-  echo "  \"apt-cyg key-finger\" to list fingerprints"
-  echo "  \"apt-cyg upgrade-self\" to upgrade apt-cyg"
+  echo "  \"cyg-fast key-add <files> ...\" to add keys contained in <files>"
+  echo "  \"cyg-fast key-del <keyids> ...\" to remove keys <keyids>"
+  echo "  \"cyg-fast key-list\" to list keys"
+  echo "  \"cyg-fast key-finger\" to list fingerprints"
+  echo "  \"cyg-fast upgrade-self\" to upgrade cyg-fast"
   echo "Options:"
   echo "  --charch <arch>          : change archetecture"
   echo "  --use-setuprc            : set cache and mirror with /etc/setup/setup.rc"
@@ -86,6 +88,7 @@ function usage()
   echo "  --file, -f <file>        : read package names from file"
   echo "  --noupdate, -u           : don't update setup.ini from mirror"
   echo "  --ipv4, -4               : wget prefer ipv4"
+  echo "  --max-count, -c <count>  : maximum number of connections"
   echo "  --help"
   echo "  --version"
 }
@@ -94,7 +97,7 @@ function usage()
 
 function version()
 {
-  echo "apt-cyg version 0.57"
+  echo "cyg-fast version 0.57"
   echo "Written by Stephen Jungels"
   echo ""
   echo "Copyright (c) 2005-9 Stephen Jungels.  Released under the GPL."
@@ -130,9 +133,11 @@ function findworkspace()
   fi
   mirror="${mirror%/}"
   mirrordir="$(mirror_to_mirrordir "$mirror/")"
-  
-  echo Working directory is $cache
-  echo Mirror is $mirror
+
+  if [ $checkdep -ne 1 ]; then
+    echo Working directory is $cache
+    echo Mirror is $mirror
+  fi
   mkdir -p "$cache/$mirrordir/$arch"
   cd "$cache/$mirrordir/$arch"
   
@@ -228,7 +233,7 @@ function getrootdir ()
   esac
 }
 
-# Usage: charch arch apt-cyg_parms ...
+# Usage: charch arch cyg-fast_parms ...
 function charch ()
 {
   local rootdir
@@ -248,7 +253,7 @@ function charch ()
 function init_gnupg ()
 {
   [ -z "$GPG" ] && return
-  export GNUPGHOME="$cache/.apt-cyg"
+  export GNUPGHOME="$cache/.cyg-fast"
   if [ ! -d "$GNUPGHOME" ]; then
     if ! { mkdir -p "$GNUPGHOME" && chmod 700 "$GNUPGHOME"; } then
       echo -e "\e[31;1mError:\e[30;0m cannot initialize directory $GNUPGHOME"
@@ -384,8 +389,8 @@ function verify_signatures ()
   done
 }
 
-# Usage: apt-cyg-key-add pkey ...
-function apt-cyg-key-add ()
+# Usage: cyg-fast-key-add pkey ...
+function cyg-fast-key-add ()
 {
   [ -z "$GPG" ] && { echo -e "\e[31;1mError:\e[30;0m GnuPG is not installed. Prease install gnupg package"; exit 1; }
   local pkeys
@@ -398,8 +403,8 @@ function apt-cyg-key-add ()
   done
 }
 
-# Usage: apt-cyg-key-add keyid ...
-function apt-cyg-key-del ()
+# Usage: cyg-fast-key-add keyid ...
+function cyg-fast-key-del ()
 {
   [ -z "$GPG" ] && { echo -e "\e[31;1mError:\e[30;0m GnuPG is not installed. Prease install gnupg package"; exit 1; }
   local keyid
@@ -409,21 +414,21 @@ function apt-cyg-key-del ()
   done
 }
 
-function apt-cyg-key-list ()
+function cyg-fast-key-list ()
 {
   [ -z "$GPG" ] && { echo -e "\e[31;1mError:\e[30;0m GnuPG is not installed. Prease install gnupg package"; exit 1; }
   findworkspace
   "${GPG[@]}" --list-keys
 }
 
-function apt-cyg-key-finger ()
+function cyg-fast-key-finger ()
 {
   [ -z "$GPG" ] && { echo -e "\e[31;1mError:\e[30;0m GnuPG is not installed. Prease install gnupg package"; exit 1; }
   findworkspace
   "${GPG[@]}" --fingerprint
 }
 
-function apt-cyg-pathof ()
+function cyg-fast-pathof ()
 {
   findworkspace >& /dev/null
   while [ "$#" -gt 0 ]; do
@@ -441,7 +446,7 @@ function apt-cyg-pathof ()
   done
 }
 
-function apt-cyg-upgrade-self ()
+function cyg-fast-upgrade-self ()
 {
   local basedir="$(dirname "$(readlink -f "$(which "$0")")")"
   if [ ! -d "$basedir/.git" ]; then
@@ -454,7 +459,7 @@ function apt-cyg-upgrade-self ()
 }
 
 
-function apt-cyg-help ()
+function cyg-fast-help ()
 {
   usage
 }
@@ -463,6 +468,7 @@ function apt-cyg-help ()
 
 noscripts=0
 noupdate=0
+checkdep=0
 OPT_FILES=()
 SUBCOMMAND=""
 ignore_case=""
@@ -470,6 +476,7 @@ force_remove=""
 force_fetch_trustedkeys=""
 no_verify=""
 YES_TO_ALL=false
+maxcount=5
 INITIAL_ARGS=( "$@" )
 ARGS=()
 
@@ -532,6 +539,15 @@ while [ $# -gt 0 ]; do
       shift
     ;;
 
+    --checkdep)
+      checkdep=1
+      shift
+    ;;
+
+    --max-count|-c)
+      maxcount=$2
+    ;;
+
     --ipv4|-4)
       WGET=( "${WGET[@]}" "--prefer-family=IPv4" )
       shift
@@ -585,7 +601,7 @@ done
 
 
 
-function apt-cyg-update ()
+function cyg-fast-update ()
 {
 
     findworkspace
@@ -594,7 +610,7 @@ function apt-cyg-update ()
 }
 
 
-function apt-cyg-show ()
+function cyg-fast-show ()
 {
 
     echo 1>&2 The following packages are installed:
@@ -603,7 +619,7 @@ function apt-cyg-show ()
 }
 
 
-function apt-cyg-find ()
+function cyg-fast-find ()
 {
     local pkg
 
@@ -625,7 +641,7 @@ function apt-cyg-find ()
 }
 
 
-function apt-cyg-describe ()
+function cyg-fast-describe ()
 {
     local pkg
 
@@ -642,7 +658,7 @@ function apt-cyg-describe ()
 }
 
 
-function apt-cyg-packageof ()
+function cyg-fast-packageof ()
 {
     local pkg
     local manifest
@@ -665,7 +681,7 @@ function apt-cyg-packageof ()
 }
 
 
-function apt-cyg-install ()
+function cyg-fast-install ()
 {
     local pkg
     local script
@@ -674,15 +690,15 @@ function apt-cyg-install ()
     findworkspace
     getsetup
 
-    for pkg do
+    [ $checkdep -ne 0 ] || echo -n "Resolving dependencies..."
 
+    for pkg do
+    echo -n "."
     local already="$(grep -c "^$pkg " /etc/setup/installed.db)"
     if [ $already -ge 1 ]; then
-      echo Package $pkg is already installed, skipping
+      echo; echo Package $pkg is already installed, skipping
       continue
     fi
-    echo ""
-    echo Installing $pkg
 
     # look for package and save desc file
 
@@ -693,13 +709,28 @@ function apt-cyg-install ()
        setup.ini
     local desc="$(< "release/$pkg/desc")"
     if [ "$desc" = "Package not found" ]; then
-      echo Package $pkg not found or ambiguous name, exiting
+      echo; echo Package $pkg not found or ambiguous name, exiting
       rm -r "release/$pkg"
       exit 1
     fi
-    echo Found package $pkg
 
-    # download and unpack the bz2 file
+    # resolve dependencies
+
+    local requires="$(grep "^requires: " "release/$pkg/desc" | sed -re 's/^requires: *(.*[^ ]) */\1/g' -e 's/ +/ /g')"
+    local warn=0
+    if [ -n "$requires" ]; then
+      for package in $requires; do
+        local already="$(grep -c "^$package " /etc/setup/installed.db)"
+        if [ $already -ge 1 ]; then
+          continue
+        fi
+        $cyg_fast -X -u --checkdep install $package
+        if [ $? -ne 0 ]; then warn=1; fi
+      done
+    fi
+    if [ $warn -ne 0 ]; then
+      echo "Warning: some required packages do not install, continuing"
+    fi
 
     # pick the latest version, which comes first
     local install="$(awk '/^install: / { print $2; exit }' "release/$pkg/desc")"
@@ -710,74 +741,88 @@ function apt-cyg-install ()
     fi
 
     local file="$(basename "$install")"
-    cd "release/$pkg"
-    "${WGET[@]}" -nc $mirror/$install
-    
-    # check the md5
-    local digest="$(awk '/^install: / { print $4; exit }' "desc")"
-    local digactual="$(md5sum $file | awk '{print $1}')"
-    if [ "$digest" != "$digactual" ]; then
-      echo MD5 sum did not match, exiting
-      exit 1
+    echo "$mirror/$install" >> /tmp/cyg-fast-downloads
+    echo "  dir=release/$pkg" >> /tmp/cyg-fast-downloads
+    echo $pkg >> /tmp/cyg-fast-packages
+
+    # exit when recursively called
+    if [ $checkdep -ne 0 ]; then
+      exit
     fi
+
+    done
+
+    [ -f "/tmp/cyg-fast-packages" ] || exit
+    echo ""
+    echo "Following packages will be installed:"
+    for p in $( cat /tmp/cyg-fast-packages ); do
+      echo -n $p " "
+    done
+    echo ""
+    read -p "Do you wish to continue? [y/N] " yn
+    case $yn in
+      [Yy]* ) ;;
+      * ) quit;;
+    esac
+
+    # download all
+    echo "Start downloading..."
+    aria2c --conditional-get --deferred-input=true --input-file=/tmp/cyg-fast-downloads -x $maxcount
+
+    # unpack all
+    for pkg in $( cat /tmp/cyg-fast-packages ); do
+
+      install="$(awk '/^install: / { print $2; exit }' "release/$pkg/desc")"
+      file="$(basename "$install")"
+      
+      cd "release/$pkg"
+      # check the md5
+      local digest="$(awk '/^install: / { print $4; exit }' "desc")"
+      local digactual="$(md5sum $file | awk '{print $1}')"
+      if [ "$digest" != "$digactual" ]; then
+        echo MD5 sum did not match, exiting
+        exit 1
+      fi
+      
+      echo "Unpacking: $pkg"
+      tar > "/etc/setup/$pkg.lst" xvf "$file" -C /
+      gzip -f "/etc/setup/$pkg.lst"
+      cd ../..
     
-    echo "Unpacking..."
-    tar > "/etc/setup/$pkg.lst" xvf "$file" -C /
-    gzip -f "/etc/setup/$pkg.lst"
-    cd ../..
-    
-    
-    # update the package database
-    
-    awk > /tmp/awk.$$ -v pkg="$pkg" -v bz=$file \
-      '{if (ins != 1 && pkg < $1) {print pkg " " bz " 0"; ins=1}; print $0} \
-      END{if (ins != 1) print pkg " " bz " 0"}' \
-      /etc/setup/installed.db
-    mv /etc/setup/installed.db /etc/setup/installed.db-save
-    mv /tmp/awk.$$ /etc/setup/installed.db
-    
-    
-    # recursively install required packages
-    
-    local requires="$(grep "^requires: " "release/$pkg/desc" | sed -re 's/^requires: *(.*[^ ]) */\1/g' -e 's/ +/ /g')"
-    
-    local warn=0
-    if [ -n "$requires" ]; then
-      echo Package $pkg requires the following packages, installing:
-      echo $requires
-      for package in $requires; do
-        local already="$(grep -c "^$package " /etc/setup/installed.db)"
-        if [ $already -ge 1 ]; then
-          echo Package $package is already installed, skipping
-          continue
-        fi
-        apt-cyg --noscripts install $package
-        if [ $? -ne 0 ]; then warn=1; fi
-      done
-    fi
-    if [ $warn -ne 0 ]; then
-      echo "Warning: some required packages did not install, continuing"
-    fi
+      # update the package database
+
+      awk > /tmp/awk.$$ -v pkg="$pkg" -v bz=$file \
+        '{if (ins != 1 && pkg < $1) {print pkg " " bz " 0"; ins=1}; print $0} \
+        END{if (ins != 1) print pkg " " bz " 0"}' \
+        /etc/setup/installed.db
+      mv /etc/setup/installed.db /etc/setup/installed.db-save
+      mv /tmp/awk.$$ /etc/setup/installed.db
+    done
     
     # run all postinstall scripts
     
     local pis="$(ls /etc/postinstall/*.sh 2>/dev/null | wc -l)"
     if [ $pis -gt 0 -a $noscripts -ne 1 ]; then
-      echo Running postinstall scripts
+      echo Running postinstall scripts...
       for script in /etc/postinstall/*.sh; do
         $script
         mv $script $script.done
       done
     fi
-    
-    echo Package $pkg installed
-
-    done
-
+    quit
 }
 
 
-function apt-cyg-remove()
+function quit()
+{
+    echo "Removing tmp files..."
+    rm /tmp/cyg-fast-downloads
+    rm /tmp/cyg-fast-packages
+    echo Done.
+    exit
+}
+
+function cyg-fast-remove()
 {
     local pkg
     local req
@@ -794,7 +839,7 @@ function apt-cyg-remove()
     local dontremove="cygwin coreutils gawk bzip2 tar xz wget bash"
     for req in $dontremove; do
       if [ "$pkg" = "$req" ]; then
-        echo apt-cyg cannot remove package $pkg, exiting
+        echo cyg-fast cannot remove package $pkg, exiting
         exit 1
       fi
     done
@@ -826,7 +871,7 @@ function invoke_subcommand ()
 {
     local SUBCOMMAND="${@:1:1}"
     local ARGS=( "${@:2}" )
-    local ACTION="apt-cyg-${SUBCOMMAND:-help}"
+    local ACTION="cyg-fast-${SUBCOMMAND:-help}"
     if type "$ACTION" >& /dev/null; then
       "$ACTION" "${ARGS[@]}"
     else

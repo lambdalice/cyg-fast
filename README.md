@@ -1,27 +1,27 @@
-apt-cyg
+cyg-fast
 =======
 
-apt-cyg is a command-line installer for [Cygwin](http://cygwin.com/) which cooperates with Cygwin Setup and uses the same repository. The syntax is similar to apt-get. Usage examples:
+cyg-fast is a command-line installer for [Cygwin](http://cygwin.com/) which cooperates with Cygwin Setup and uses the same repository. The syntax is similar to apt-get. Usage examples:
 
-* "apt-cyg install &lt;package names&gt;" to install packages
-* "apt-cyg remove &lt;package names&gt;" to remove packages
-* "apt-cyg update" to update setup.ini
-* "apt-cyg show" to show installed packages
-* "apt-cyg find &lt;pattern(s)&gt;" to find packages matching patterns
-* "apt-cyg describe &lt;pattern(s)&gt;" to describe packages matching patterns
-* "apt-cyg packageof &lt;commands or files&gt;" to locate parent packages
-* "apt-cyg pathof &lt;cache|mirror|mirrordir|cache/mirrordir&gt;" to show path"
-* "apt-cyg key-add &lt;files&gt; ..." to add keys contained in &lt;files&gt;
-* "apt-cyg key-del &lt;keyids&gt; ..." to remove keys &lt;keyids&gt;
-* "apt-cyg key-list" to list keys
-* "apt-cyg key-finger" to list fingerprints
+* "cyg-fast install &lt;package names&gt;" to install packages
+* "cyg-fast remove &lt;package names&gt;" to remove packages
+* "cyg-fast update" to update setup.ini
+* "cyg-fast show" to show installed packages
+* "cyg-fast find &lt;pattern(s)&gt;" to find packages matching patterns
+* "cyg-fast describe &lt;pattern(s)&gt;" to describe packages matching patterns
+* "cyg-fast packageof &lt;commands or files&gt;" to locate parent packages
+* "cyg-fast pathof &lt;cache|mirror|mirrordir|cache/mirrordir&gt;" to show path"
+* "cyg-fast key-add &lt;files&gt; ..." to add keys contained in &lt;files&gt;
+* "cyg-fast key-del &lt;keyids&gt; ..." to remove keys &lt;keyids&gt;
+* "cyg-fast key-list" to list keys
+* "cyg-fast key-finger" to list fingerprints
 
 Requirements
 -----------
 
-apt-cyg requires the cygwin default environment and optional packages below.
+cyg-fast requires the cygwin default environment and optional packages below.
 
-* wget,ca-certificates,gnupg
+* aria2,wget,ca-certificates,gnupg
 
 In 32bit version of cygwin, wget requires an additional setting for ca-certificates package.
 Choose one of below settings.
@@ -46,25 +46,37 @@ But, as of 2014-01-17, perhaps ca-certificates package makes fail of certificati
 Quick start
 -----------
 
-apt-cyg is a simple script. Once you have a copy, make it executable:
+cyg-fast is a simple script. Once you have a copy, make it executable:
 
-    # chmod +x /bin/apt-cyg
+    # chmod +x /bin/cyg-fast
 
-Optionally place apt-cyg in a bin/ folder on your path.
+Optionally place cyg-fast in a bin/ folder on your path.
 
-Then use apt-cyg, for example:
+Then use cyg-fast, for example:
 
-    # apt-cyg install nano
+    # cyg-fast install nano
 
 New features
 ------------
+
+### Pre-resolving dependencies
+
+cyg-fast finds all depending packages before downloading and installing.
+
+### Parallel downloading with aria2
+
+Aria2 is an advances file downloading tool that allows you to download files with faster speed.
+
+cyg-fast provides multi-connection downloading using aria2.
+
+You can change the maximum number of connections with the ```--max-count``` option.
 
 ### True multi-architecture support
 
 Let think a case that you want to install the x86 package when you are working under the x86_64 environment.
 For example:
 
-    # apt-cyg --charch x86 install chere
+    # cyg-fast --charch x86 install chere
 
 As of 2013-10-26, chere package is provided for only the repository for x86.
 
@@ -73,7 +85,7 @@ Of course, you must install both environments of x86_64 and x86, beforehand.
 
 ### Signature check and key management by GnuPG
 
-The default action of apt-cyg has been changed to check signature for 'setup.ini'.
+The default action of cyg-fast has been changed to check signature for 'setup.ini'.
 Of course you can also avoid signature check by using --no-verify or -X options.
 Public keys of cygwin and cygwinports are already registered to trusted keys of embeded.
 If you want to use some other public keys, please use key-* subcommands.
@@ -108,6 +120,7 @@ Ex.) Merging to the GPL from the MIT is possible. But merging to the MIT from th
 * [buzain / apt-cyg](https://github.com/buzain/apt-cyg/network)
 * [wuyangnju / apt-cyg](https://github.com/wuyangnju/apt-cyg/network)
 * [takuya / apt-cyg](https://github.com/takuya/apt-cyg/network)
+* [lambdalice / cyg-fast](https://github.com/lambdalice/cyg-fast/network)
 
 Todo
 ------------
