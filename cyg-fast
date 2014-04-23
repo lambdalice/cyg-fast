@@ -715,6 +715,7 @@ function cyg-fast-install ()
     fi
 
     # queue current package
+    local install="$(awk '/^install: / { print $2; exit }' "release/$pkg/desc")"
     echo "$mirror/$install" >> /tmp/cyg-fast-downloads
     echo "  dir=release/$pkg" >> /tmp/cyg-fast-downloads
     echo $pkg >> /tmp/cyg-fast-packages
@@ -736,9 +737,6 @@ function cyg-fast-install ()
     if [ $warn -ne 0 ]; then
       echo "Warning: some required packages do not install, continuing"
     fi
-
-    # pick the latest version, which comes first
-    local install="$(awk '/^install: / { print $2; exit }' "release/$pkg/desc")"
 
     if [ -z "$install" ]; then
       echo "Could not find \"install\" in package description: obsolete package?"
