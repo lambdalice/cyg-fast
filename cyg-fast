@@ -89,7 +89,7 @@ function usage()
   echo "  --file, -f <file>        : read package names from file"
   echo "  --noupdate, -u           : don't update setup.ini from mirror"
   echo "  --ipv4, -4               : wget prefer ipv4"
-  echo "  --max-count, -c <count>  : maximum number of connections"
+  echo "  --max-count, -m <count>  : maximum number of connections"
   echo "  --help"
   echo "  --version"
 }
@@ -545,7 +545,7 @@ while [ $# -gt 0 ]; do
       shift
     ;;
 
-    --max-count|-c)
+    --max-count|-m)
       maxcount=$2
     ;;
 
