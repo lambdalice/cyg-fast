@@ -63,6 +63,7 @@ function usage()
 {
   echo cyg-fast: Installs and removes Cygwin packages.
   echo "  \"cyg-fast install <package names>\" to install packages"
+  echo "  \"cyg-fast resume-install\" to resume interrupted installing"
   echo "  \"cyg-fast remove <package names>\" to remove packages"
   echo "  \"cyg-fast update\" to update setup.ini"
   echo "  \"cyg-fast show\" to show installed packages"
@@ -89,7 +90,7 @@ function usage()
   echo "  --file, -f <file>        : read package names from file"
   echo "  --noupdate, -u           : don't update setup.ini from mirror"
   echo "  --ipv4, -4               : wget prefer ipv4"
-  echo "  --max-count <count>      : maximum number of connections"
+  echo "  --max-connections <num>  : maximum number of connections"
   echo "  --help"
   echo "  --version"
 }
@@ -495,6 +496,11 @@ while [ $# -gt 0 ]; do
       shift
     ;;
 
+    --max-connections)
+      maxcount=$2
+      shift; shift
+    ;;
+
     --ignore-case|-i)
       ignore_case="$1"
       shift
@@ -543,10 +549,6 @@ while [ $# -gt 0 ]; do
     --checkdep)
       checkdep=1
       shift
-    ;;
-
-    --max-count)
-      maxcount=$2
     ;;
 
     --ipv4|-4)
@@ -681,6 +683,7 @@ function cyg-fast-packageof ()
 
 }
 
+RESUME_INSTALL=1
 
 function cyg-fast-install ()
 {
@@ -752,27 +755,40 @@ function cyg-fast-install ()
       fi
 
     done
+    RESUME_INSTALL=0
+    cyg-fast-resume-install
+}
 
-    [ -f "/tmp/cyg-fast-packages" ] || exit
+function cyg-fast-resume-install()
+{
+    if [ ! -f "/tmp/cyg-fast-packages" ]; then
+      echo "Nothing to install, exiting"
+      exit 0
+    fi
+
     echo; echo "Following packages will be installed:"
     for p in $( cat /tmp/cyg-fast-packages ); do
       echo -n $p " "
     done
-    echo; read -p "Do you wish to continue? [y/N] " yn
-    case $yn in
-      [Yy]* ) ;;
-      * ) quit;;
-    esac
+    echo; ask_user "Do you wish to continue?" || quit
+
+    [ $RESUME_INSTALL = 0 ] || findworkspace
 
     # download all
 
     echo "Start downloading..."
-    aria2c --conditional-get --deferred-input --input-file /tmp/cyg-fast-downloads -x $maxcount
+    aria2c --conditional-get \
+           --deferred-input \
+           --input-file /tmp/cyg-fast-downloads \
+           -x $maxcount || {
+      echo "Interrupted: To resume installing, run \"cyg-fast resume-install\" ."
+      exit 1
+    }
 
     # unpack all
 
     for pkg in $( cat /tmp/cyg-fast-packages ); do
-
+    
       install="$(awk '/^install: / { print $2; exit }' "release/$pkg/desc")"
       file="$(basename "$install")"
       cd "release/$pkg"
@@ -812,6 +828,7 @@ function cyg-fast-install ()
       done
     fi
     quit
+
 }
 
 
@@ -883,4 +900,3 @@ function invoke_subcommand ()
 }
 
 invoke_subcommand "$SUBCOMMAND" "${ARGS[@]}"
-

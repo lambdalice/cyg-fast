@@ -4,6 +4,7 @@ cyg-fast
 cyg-fast is a command-line installer for [Cygwin](http://cygwin.com/) which cooperates with Cygwin Setup and uses the same repository. The syntax is similar to apt-get. Usage examples:
 
 * "cyg-fast install &lt;package names&gt;" to install packages
+* "cyg-fast resume-install" to resume interrupted installing
 * "cyg-fast remove &lt;package names&gt;" to remove packages
 * "cyg-fast update" to update setup.ini
 * "cyg-fast show" to show installed packages
