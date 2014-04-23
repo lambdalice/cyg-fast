@@ -120,7 +120,6 @@ Ex.) Merging to the GPL from the MIT is possible. But merging to the MIT from th
 * [buzain / apt-cyg](https://github.com/buzain/apt-cyg/network)
 * [wuyangnju / apt-cyg](https://github.com/wuyangnju/apt-cyg/network)
 * [takuya / apt-cyg](https://github.com/takuya/apt-cyg/network)
-* [lambdalice / cyg-fast](https://github.com/lambdalice/cyg-fast/network)
 
 Todo
 ------------
