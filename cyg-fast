@@ -476,6 +476,7 @@ SUBCOMMAND=""
 ignore_case=""
 force=""
 no_verify=""
+no_check_cert=""
 YES_TO_ALL=false
 maxcount=5
 INITIAL_ARGS=( "$@" )
@@ -517,6 +518,7 @@ while [ $# -gt 0 ]; do
 
     --no-check-certificate)
       WGET+=( "--no-check-certificate" )
+      no_check_cert=1
       shift
     ;;
 
@@ -774,12 +776,13 @@ function cyg-fast-resume-install()
     echo; ask_user "Do you wish to continue?" || quit
 
     [ $RESUME_INSTALL = 0 ] || findworkspace
-
+    
     # download all
-
+    
     echo "Start downloading..."
     aria2c --conditional-get \
            --deferred-input \
+           `[ "$no_check_cert" = 1 ] || echo "--check-certificate"` \
            --input-file /tmp/cyg-fast-downloads \
            -x $maxcount || {
       echo "Interrupted: To resume installing, run \"cyg-fast resume-install\" ."
