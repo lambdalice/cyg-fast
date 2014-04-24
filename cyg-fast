@@ -694,6 +694,7 @@ function cyg-fast-install ()
     echo -n "Resolving dependencies..."
 
     resolve_deps
+    touch /tmp/cyg-fast-packages /tmp/cyg-fast-downloads
 
     RESUME_INSTALL=0
     cyg-fast-resume-install
@@ -707,6 +708,12 @@ function resolve_deps()
     hasdeps=0
     
     for pkg in $pkgs; do
+
+      local already="$(grep -c "$pkg " /etc/setup/installed.db)" 
+      local installing="$( grep -c "$pkg" /tmp/cyg-fast-packages)"
+      if [ $already = 1 ] || [ $installing = 1 ] ; then
+        continue;
+      fi
 
       # look for package and save desc file
  
@@ -728,7 +735,6 @@ function resolve_deps()
       echo "$mirror/$install" >> /tmp/cyg-fast-downloads
       echo "  dir=release/$pkg" >> /tmp/cyg-fast-downloads
       echo $pkg >> /tmp/cyg-fast-packages
-
       # resolve dependencies
 
       local requires="$(grep "^requires: " "release/$pkg/desc" | sed -re 's/^requires: *(.*[^ ]) */\1/g' -e 's/ +/ /g')"
@@ -736,9 +742,10 @@ function resolve_deps()
       
       if [ -n "$requires" ]; then
         for package in $requires; do
-          local already="$(grep -c "^$package " /etc/setup/installed.db)" 
-          local installing="$( grep -c "^$package" /tmp/cyg-fast-packages)"
-          if [ $already = 0 ] && [ $installing = 0 ] ; then
+          local already="$(grep -c "$package " /etc/setup/installed.db)" 
+          local installing="$( grep -c "$package" /tmp/cyg-fast-packages)"
+          local processing="$( echo ${CURRENT[@]} ${pkgs[@]} | grep -c "$package" )"
+          if [ $already = 0 ] && [ $installing = 0 ] && [ $processing = 0 ] ; then
             hasdeps=1
             CURRENT=( ${CURRENT[@]} $package )
             if [ $? -ne 0 ]; then warn=1; fi
