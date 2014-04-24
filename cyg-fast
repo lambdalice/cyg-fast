@@ -711,9 +711,7 @@ function resolve_deps()
     for pkg in $pkgs; do
 
       local installing="$( grep -c "$pkg" /tmp/cyg-fast-packages)"
-      if [ $installing = 1 ] ; then
-        continue;
-      fi
+      [ $installing = 0 ] || continue
 
       # look for package and save desc file
  
