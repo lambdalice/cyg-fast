@@ -135,10 +135,9 @@ function findworkspace()
   mirror="${mirror%/}"
   mirrordir="$(mirror_to_mirrordir "$mirror/")"
 
-  if [ $checkdep -ne 1 ]; then
-    echo Working directory is $cache
-    echo Mirror is $mirror
-  fi
+  echo Working directory is $cache
+  echo Mirror is $mirror
+  
   mkdir -p "$cache/$mirrordir/$arch"
   cd "$cache/$mirrordir/$arch"
   
@@ -469,7 +468,6 @@ function cyg-fast-help ()
 
 noscripts=0
 noupdate=0
-checkdep=0
 OPT_FILES=()
 SUBCOMMAND=""
 ignore_case=""
@@ -480,7 +478,6 @@ YES_TO_ALL=false
 maxcount=5
 INITIAL_ARGS=( "$@" )
 ARGS=()
-
 while [ $# -gt 0 ]; do
   case "$1" in
 
@@ -544,11 +541,6 @@ while [ $# -gt 0 ]; do
 
     --noupdate|-u)
       noupdate=1
-      shift
-    ;;
-
-    --checkdep)
-      checkdep=1
       shift
     ;;
 
@@ -689,21 +681,37 @@ function cyg-fast-install ()
     checkpackages "$@"
     findworkspace
     getsetup
-
-    [ $checkdep -ne 0 ] || echo -n "Resolving dependencies..."
-
+    
     for pkg do
-      echo -n "."
       local already="$(grep -c "^$pkg " /etc/setup/installed.db)"
       if [ $already -ge 1 ] && [ -z $force ]; then
-        echo; echo Package $pkg is already installed, skipping
+        echo Package $pkg is already installed, skipping
         continue
       fi
+      CURRENT="${CURRENT[@]} $pkg"
+    done
+
+    echo -n "Resolving dependencies..."
+
+    resolve_deps
+
+    RESUME_INSTALL=0
+    cyg-fast-resume-install
+}
+
+function resolve_deps()
+{
+    echo -n "."
+    pkgs=${CURRENT[@]}
+    CURRENT=""
+    hasdeps=0
+    
+    for pkg in $pkgs; do
 
       # look for package and save desc file
-
+ 
       mkdir -p "release/$pkg"
-      awk > "release/$pkg/desc" -v package="$pkg" \
+      awk > "release/$pkg/desc" -v package=`echo $pkg` \
         'BEGIN{RS="\n\n@ "; FS="\n"} {if ($1 == package) {desc = $0; px++}} \
          END {if (px == 1 && desc != "") print desc; else print "Package not found"}' \
          setup.ini
@@ -725,19 +733,20 @@ function cyg-fast-install ()
 
       local requires="$(grep "^requires: " "release/$pkg/desc" | sed -re 's/^requires: *(.*[^ ]) */\1/g' -e 's/ +/ /g')"
       local warn=0
+      
       if [ -n "$requires" ]; then
         for package in $requires; do
           local already="$(grep -c "^$package " /etc/setup/installed.db)" 
           local installing="$( grep -c "^$package" /tmp/cyg-fast-packages)"
           if [ $already = 0 ] && [ $installing = 0 ] ; then
-            $cyg_fast -r --checkdep install $package
+            hasdeps=1
+            CURRENT=( ${CURRENT[@]} $package )
             if [ $? -ne 0 ]; then warn=1; fi
           fi
         done
       fi
-      if [ $warn -ne 0 ]; then
-        echo "Warning: some required packages do not install, continuing"
-      fi
+
+      [ $warn = 0 ] || echo "Warning: some required packages do not install, continuing"
 
       if [ -z "$install" ]; then
         echo "Could not find \"install\" in package description: obsolete package?"
@@ -745,14 +754,9 @@ function cyg-fast-install ()
       fi
     done
     
-    # exit when recursively called
+    # tailcall
 
-    if [ $checkdep = 1 ]; then
-      exit 0
-    fi
-
-    RESUME_INSTALL=0
-    cyg-fast-resume-install
+    [ $hasdeps = 0 ] ||  resolve_deps;
 }
 
 function cyg-fast-resume-install()
