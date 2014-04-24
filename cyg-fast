@@ -692,10 +692,11 @@ function cyg-fast-install ()
     done
 
     echo -n "Resolving dependencies..."
-
-    resolve_deps
+    
+    
     touch /tmp/cyg-fast-packages /tmp/cyg-fast-downloads
-
+    resolve_deps
+        
     RESUME_INSTALL=0
     cyg-fast-resume-install
 }
@@ -709,9 +710,8 @@ function resolve_deps()
     
     for pkg in $pkgs; do
 
-      local already="$(grep -c "$pkg " /etc/setup/installed.db)" 
       local installing="$( grep -c "$pkg" /tmp/cyg-fast-packages)"
-      if [ $already = 1 ] || [ $installing = 1 ] ; then
+      if [ $installing = 1 ] ; then
         continue;
       fi
 
@@ -743,9 +743,7 @@ function resolve_deps()
       if [ -n "$requires" ]; then
         for package in $requires; do
           local already="$(grep -c "$package " /etc/setup/installed.db)" 
-          local installing="$( grep -c "$package" /tmp/cyg-fast-packages)"
-          local processing="$( echo ${CURRENT[@]} ${pkgs[@]} | grep -c "$package" )"
-          if [ $already = 0 ] && [ $installing = 0 ] && [ $processing = 0 ] ; then
+          if [ $already = 0 ]; then
             hasdeps=1
             CURRENT=( ${CURRENT[@]} $package )
             if [ $? -ne 0 ]; then warn=1; fi
