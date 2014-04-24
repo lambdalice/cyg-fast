@@ -81,8 +81,7 @@ function usage()
   echo "  --charch <arch>          : change archetecture"
   echo "  --use-setuprc            : set cache and mirror with /etc/setup/setup.rc"
   echo "  --ignore-case, -i        : ignore case distinctions for <patterns>"
-  echo "  --force-remove           : force remove"
-  echo "  --force-fetch-trustedkeys: force fetch trustedkeys"
+  echo "  --force                  : force install/remove/fetch trustedkeys"
   echo "  --no-verify, -X          : Don't verify setup.ini signatures"
   echo "  --no-check-certificate   : Don't validate the server's certificate"
   echo "  --mirror, -m <url>       : set mirror"
@@ -90,6 +89,7 @@ function usage()
   echo "  --file, -f <file>        : read package names from file"
   echo "  --noupdate, -u           : don't update setup.ini from mirror"
   echo "  --ipv4, -4               : wget prefer ipv4"
+  echo "  --rapid, -r              : -X, --no-check-certificate, -u, skip checking MD5"
   echo "  --max-connections <num>  : maximum number of connections"
   echo "  --help"
   echo "  --version"
@@ -328,7 +328,7 @@ function fetch_trustedkeys ()
     local URL="$(eval echo "\$${LABEL}_URL")"
     local URL_LATEST="$(eval echo "\$${LABEL}_URL_LATEST")"
     local CASE=""
-    if [ -z "$force_fetch_trustedkeys" ] && { "${GPG[@]}" --fingerprint --with-colons | grep -q "$FPR"; } then
+    if ( [ -z "$force" ] || [ -n $rapid ] ) && { "${GPG[@]}" --fingerprint --with-colons | grep -q "$FPR"; } then
       continue
     fi
     if [ -n "$URL" ]; then
@@ -474,8 +474,7 @@ checkdep=0
 OPT_FILES=()
 SUBCOMMAND=""
 ignore_case=""
-force_remove=""
-force_fetch_trustedkeys=""
+force=""
 no_verify=""
 YES_TO_ALL=false
 maxcount=5
@@ -506,13 +505,8 @@ while [ $# -gt 0 ]; do
       shift
     ;;
 
-    --force-remove)
-      force_remove=1
-      shift
-    ;;
-
-    --force-fetch-trustedkeys)
-      force_fetch_trustedkeys=1
+    --force)
+      force=1
       shift
     ;;
 
@@ -522,6 +516,13 @@ while [ $# -gt 0 ]; do
     ;;
 
     --no-check-certificate)
+      WGET+=( "--no-check-certificate" )
+      shift
+    ;;
+
+    --rapid|-r)
+      no_verify=1
+      noupdate=1
       WGET+=( "--no-check-certificate" )
       shift
     ;;
@@ -699,7 +700,7 @@ function cyg-fast-install ()
     for pkg do
       echo -n "."
       local already="$(grep -c "^$pkg " /etc/setup/installed.db)"
-      if [ $already -ge 1 ]; then
+      if [ $already -ge 1 ] && [ -z $force ]; then
         echo; echo Package $pkg is already installed, skipping
         continue
       fi
@@ -733,8 +734,8 @@ function cyg-fast-install ()
         for package in $requires; do
           local already="$(grep -c "^$package " /etc/setup/installed.db)" 
           local installing="$( grep -c "^$package" /tmp/cyg-fast-packages)"
-          if [ $already = 0 ] && [ $installing = 0 ]; then
-            $cyg_fast -X -u --checkdep install $package
+          if [ $already = 0 ] && [ $installing = 0 ] ; then
+            $cyg_fast -r --checkdep install $package
             if [ $? -ne 0 ]; then warn=1; fi
           fi
         done
@@ -747,14 +748,14 @@ function cyg-fast-install ()
         echo "Could not find \"install\" in package description: obsolete package?"
         exit 1
       fi
-    
-      # exit when recursively called
-
-      if [ $checkdep = 1 ]; then
-        exit 0
-      fi
-
     done
+    
+    # exit when recursively called
+
+    if [ $checkdep = 1 ]; then
+      exit 0
+    fi
+
     RESUME_INSTALL=0
     cyg-fast-resume-install
 }
@@ -795,11 +796,13 @@ function cyg-fast-resume-install()
       
       # check the md5
 
-      local digest="$(awk '/^install: / { print $4; exit }' "desc")"
-      local digactual="$(md5sum $file | awk '{print $1}')"
-      if [ "$digest" != "$digactual" ]; then
-        echo MD5 sum did not match, exiting
-        exit 1
+      if [ -z $rapid ]; then
+        local digest="$(awk '/^install: / { print $4; exit }' "desc")"
+        local digactual="$(md5sum $file | awk '{print $1}')"
+        if [ "$digest" != "$digactual" ]; then
+          echo MD5 sum did not match, exiting
+          exit 1
+        fi
       fi
       
       echo "Unpacking: $pkg"
@@ -863,7 +866,7 @@ function cyg-fast-remove()
       fi
     done
 
-    if [ ! -e "/etc/setup/$pkg.lst.gz" -a -z "$force_remove" ]; then
+    if [ ! -e "/etc/setup/$pkg.lst.gz" -a -z "$force" ]; then
       echo Package manifest missing, cannot remove $pkg.  Exiting
       exit 1
     fi
@@ -883,7 +886,6 @@ function cyg-fast-remove()
     echo Package $pkg removed
 
     done
-
 }
 
 function invoke_subcommand ()
