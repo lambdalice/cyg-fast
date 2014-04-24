@@ -82,7 +82,7 @@ You don't need to be annoy with an unstable internet connection...
 
 ### Force re-install packages
 
-You can reinstall a package by using ```cyg-fast --force install &lt;package&gt;```
+You can reinstall a package by using ```cyg-fast --force install <package>```
 
 ### Rapid mode
 
