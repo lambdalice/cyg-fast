@@ -1,9 +1,11 @@
 cyg-fast
 =======
 
-cyg-fast is an advanced version of apt-cyg, command-line installer for [Cygwin](http://cygwin.com/) which cooperates with Cygwin Setup and uses the same repository. The syntax is similar to apt-get. Usage examples:
+cyg-fast is an advanced version of apt-cyg, command-line installer for [Cygwin](http://cygwin.com/) which cooperates with Cygwin Setup and uses the same repository. 
 
 Supporting pre-resolving dependencies and parallel-downloading, cyg-fast works faster than apt-cyg.
+
+The syntax is similar to apt-get. Usage examples:
 
 * "cyg-fast install &lt;package names&gt;" to install packages
 * "cyg-fast resume-install" to resume interrupted installing
