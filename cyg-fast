@@ -52,13 +52,13 @@ TAR="$(  which tar  2>/dev/null )"
 GAWK="$( which awk  2>/dev/null )"
 GPGV="$( which gpgv 2>/dev/null )"
 GPG="$(  which gpg  2>/dev/null )"
-WGET="$(  which wget 2>/dev/null )"
 ARIA2C="$(  which aria2c  2>/dev/null )"
-if [ -z "$ARIA2C" -o -z "$WGET" -o -z "$TAR" -o -z "$GAWK" ]; then
-  echo You must install aria2, wget, tar and gawk to use cyg-fast.
+if [ -z "$ARIA2C" -o -z "$TAR" -o -z "$GAWK" ]; then
+  echo You must install aria2, tar and gawk to use cyg-fast.
   exit 1
 fi
 
+ARIA2C=( "${ARIA2C[@]}" "--conditional-get" "--allow-overwrite" )
 function usage()
 {
   echo cyg-fast: Installs and removes Cygwin packages.
@@ -88,7 +88,6 @@ function usage()
   echo "  --cache, -c <dir>        : set cache"
   echo "  --file, -f <file>        : read package names from file"
   echo "  --noupdate, -u           : don't update setup.ini from mirror"
-  echo "  --ipv4, -4               : wget prefer ipv4"
   echo "  --rapid, -r              : -X, --no-check-certificate, -u, skip checking MD5"
   echo "  --max-connections <num>  : maximum number of connections"
   echo "  --help"
@@ -149,10 +148,10 @@ function findworkspace()
 
 function download_and_verify ()
 {
-  "${WGET[@]}" -N "$1" || return 1
+  "${ARIA2C[@]}" "$1" || return 1
   [ -e "${1##*/}" ] || return 1
   if [ -z "$no_verify" ]; then
-    "${WGET[@]}" -N "${1}.sig" || return 1
+    "${ARIA2C[@]}" "${1}.sig" || return 1
     [ -e "${1##*/}.sig" ] && verify_signatures "${1##*/}.sig" || { rm -f "${1##*/}" "${1##*/}.sig"; return 1; }
   fi
   return
@@ -290,7 +289,7 @@ function wget_return_case_md5sum ()
     1) echo "$LABEL: FAILED: Could not download $URL."; return 1 ;;
     5) echo "$LABEL: WARNING: The SSL certificate is invalid $URL."
        ask_user "Continue regardless of invalid SSL certificate?" || return 1
-       "${WGET[@]}" --no-check-certificate "$URL" -O "$FILE"
+       "${ARIA2C[@]}" "$URL" -o "$FILE"
        return 0
     ;;
     8) echo "$LABEL: FAILED: 404 Not Found $URL." return 1 ;;
@@ -306,7 +305,7 @@ function wget_and_check_md5sum ()
   local MD5="$2"
   local URL="$3"
   local FILE="$4"
-  "${WGET[@]}" "$URL" -O "$FILE"
+  "${ARIA2C[@]}" `[ -n $no_check_cert ] || echo "--check-certificate"` "$URL" -o "$FILE"
   wget_return_case_md5sum "$?" || return 1
   if ! { echo "$MD5 *$FILE" | md5sum -c >& /dev/null; } then
     echo "$LABEL: FAILED: MD5 hash is not match."
@@ -517,7 +516,6 @@ while [ $# -gt 0 ]; do
     ;;
 
     --no-check-certificate)
-      WGET+=( "--no-check-certificate" )
       no_check_cert=1
       shift
     ;;
@@ -525,7 +523,7 @@ while [ $# -gt 0 ]; do
     --rapid|-r)
       no_verify=1
       noupdate=1
-      WGET+=( "--no-check-certificate" )
+      no_check_cert=1
       shift
     ;;
 
@@ -551,11 +549,6 @@ while [ $# -gt 0 ]; do
 
     --checkdep)
       checkdep=1
-      shift
-    ;;
-
-    --ipv4|-4)
-      WGET=( "${WGET[@]}" "--prefer-family=IPv4" )
       shift
     ;;
 
@@ -780,11 +773,10 @@ function cyg-fast-resume-install()
     # download all
     
     echo "Start downloading..."
-    aria2c --conditional-get \
-           --deferred-input \
-           `[ "$no_check_cert" = 1 ] || echo "--check-certificate"` \
-           --input-file /tmp/cyg-fast-downloads \
-           -x $maxcount || {
+    ${ARIA2C[@]} --deferred-input \
+                 `[ "$no_check_cert" = 1 ] || echo "--check-certificate"` \
+                 --input-file /tmp/cyg-fast-downloads \
+                 -x $maxcount || {
       echo "Interrupted: To resume installing, run \"cyg-fast resume-install\" ."
       exit 1
     }
