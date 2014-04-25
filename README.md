@@ -61,13 +61,6 @@ As of 2013-10-26, chere package is provided for only the repository for x86.
 Remarks:
 Of course, you must install both environments of x86_64 and x86, beforehand.
 
-### Signature check and key management by GnuPG
-
-The default action of cyg-fast has been changed to check signature for 'setup.ini'.
-Of course you can also avoid signature check by using --no-verify or -X options.
-Public keys of cygwin and cygwinports are already registered to trusted keys of embeded.
-If you want to use some other public keys, please use ```key-*``` subcommands.
-
 ### Pre-resolving dependencies
 
 cyg-fast finds all depending packages before downloading and installing.
