@@ -16,10 +16,7 @@ The syntax is similar to apt-get. Usage examples:
 * "cyg-fast describe &lt;pattern(s)&gt;" to describe packages matching patterns
 * "cyg-fast packageof &lt;commands or files&gt;" to locate parent packages
 * "cyg-fast pathof &lt;cache|mirror|mirrordir|cache/mirrordir&gt;" to show path"
-* "cyg-fast key-add &lt;files&gt; ..." to add keys contained in &lt;files&gt;
-* "cyg-fast key-del &lt;keyids&gt; ..." to remove keys &lt;keyids&gt;
-* "cyg-fast key-list" to list keys
-* "cyg-fast key-finger" to list fingerprints
+* "cyg-fast build-deptree" to build dependency tree to make install/remove faster
 
 Requirements
 -----------
@@ -71,10 +68,17 @@ Of course you can also avoid signature check by using --no-verify or -X options.
 Public keys of cygwin and cygwinports are already registered to trusted keys of embeded.
 If you want to use some other public keys, please use ```key-*``` subcommands.
 
-
 ### Pre-resolving dependencies
 
 cyg-fast finds all depending packages before downloading and installing.
+
+### Generate dependency tree and check dependency on removing
+
+You can generate "dependency tree" using ```cyg-fast build-deptree```
+
+to make installing faster and enable dependency checking on removing.
+
+Generated dep-tree is in $cache/$mirrordir/$arch/deptree .
 
 ### Resume installation when downloading fails
 
@@ -128,5 +132,4 @@ Todo
 * Support multi mirrors: Cygwin setup can use multi mirrors. They are recorded at last-mirror section in '/etc/setup/setup.rc'. It's useful for using [Cygwinports](http://cygwinports.org/).
 * Support completion: Some other forks already supported it. For example, [Milly / apt-cyg](https://github.com/Milly/apt-cyg) under the cfg / apt-cyg fork, [ashumkin / apt-cyg](https://github.com/ashumkin/apt-cyg) and etc supported it.
 * Support upgrade: But maybe, busy resources can not be upgraded, and rebase problem will happen. Cygwin setup resolves by replacing them at next reboot.
-* Support dependency check for remove subcommand.
 
