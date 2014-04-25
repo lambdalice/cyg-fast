@@ -49,6 +49,7 @@ function usage()
   echo "  \"cyg-fast packageof <commands or files>\" to locate parent packages"
   echo "  \"cyg-fast pathof <cache|mirror|mirrordir|cache/mirrordir|setup.ini>\""
   echo "                                                          to show path"
+  echo "  \"cyg-fast build-deptree\" to build dependency tree to make install/remove faster"
   echo "  \"cyg-fast upgrade-self\" to upgrade cyg-fast"
   echo "Options:"
   echo "  --charch <arch>          : change archetecture"
@@ -164,6 +165,8 @@ function setupini_download ()
     files_backup_clean setup.ini setup.ini.sig setup.bz2 setup.bz2.sig
     popd
     echo "Updated setup.ini"
+    noupdate=1
+    ask_user "Would you like to generate dep-tree now?" && cyg-fast-build-deptree
     return
   done
   files_restore setup.ini setup.ini.sig setup.bz2 setup.bz2.sig
@@ -464,6 +467,53 @@ function cyg-fast-packageof ()
 
 }
 
+function cyg-fast-build-deptree()
+{
+    findworkspace
+    getsetup
+    
+    echo Generating dependency tree...
+
+    [ -d deptree ] && rm deptree/*/neededby
+    mkdir -p deptree
+
+    PACKAGES=`awk 'BEGIN{ RS="\n\n@" ; FS="\n"; ORS="\n" } { print $1 "\n" }' setup.ini`
+
+    set -f; IFS='
+'
+    for pkg in $PACKAGES; do
+
+      [[ $pkg == "#"* ]] && continue
+      pkg=`echo $pkg | sed 's/ //g'`
+
+      mkdir -p deptree/$pkg
+
+      [ -f release/$pkg/desc  ] || {
+        mkdir -p "release/$pkg"
+        awk > "release/$pkg/desc" -v package=`echo $pkg` \
+          'BEGIN{RS="\n\n@ "; FS="\n"} {if ($1 == package) {desc = $0; px++}} \
+           END {if (px == 1 && desc != "") print desc; else print "Package not found"}' \
+           setup.ini
+      }
+
+      echo Generating: $pkg
+
+      local requires="$(grep "^requires: " "release/$pkg/desc" | sed -re 's/^requires: *(.*[^ ]) */\1/g' -e 's/ +/ /g')"
+      echo ${requires[@]} > deptree/$pkg/requires
+
+      unset IFS; set +f
+      for reqpkg in $requires; do
+        mkdir -p deptree/$reqpkg
+        echo -n $pkg " " >> deptree/$reqpkg/neededby
+      done
+      set -f; IFS='
+'
+    done
+
+    echo Done.
+    unset IFS; set +f
+}
+
 RESUME_INSTALL=1
 
 function cyg-fast-install ()
@@ -486,7 +536,6 @@ function cyg-fast-install ()
 
     echo -n "Resolving dependencies.."
     
-    touch /tmp/cyg-fast-packages /tmp/cyg-fast-downloads
     resolve_deps
         
     RESUME_INSTALL=0
@@ -502,39 +551,59 @@ function resolve_deps()
     
     for pkg in $pkgs; do
 
-      local installing="$( grep -c "$pkg" /tmp/cyg-fast-packages)"
-      [ $installing = 0 ] || continue
+      [ -f /tmp/cyg-fast-packages ] && {
+        local installing="$( grep -c "$pkg" /tmp/cyg-fast-packages)"
+        [ $installing = 0 ] || continue
+      }
 
       # look for package and save desc file
  
-      mkdir -p "release/$pkg"
-      awk > "release/$pkg/desc" -v package=`echo $pkg` \
-        'BEGIN{RS="\n\n@ "; FS="\n"} {if ($1 == package) {desc = $0; px++}} \
-         END {if (px == 1 && desc != "") print desc; else print "Package not found"}' \
-         setup.ini
-      local desc="$(< "release/$pkg/desc")"
-      if [ "$desc" = "Package not found" ]; then
-        echo; echo Package $pkg not found or ambiguous name, exiting
-        rm -r "release/$pkg"
-        exit 1
+      if [ ! -d deptree ]; then
+        mkdir -p "release/$pkg"
+        awk > "release/$pkg/desc" -v package=`echo $pkg` \
+          'BEGIN{RS="\n\n@ "; FS="\n"} {if ($1 == package) {desc = $0; px++}} \
+           END {if (px == 1 && desc != "") print desc; else print "Package not found"}' \
+           setup.ini
+        local desc="$(< "release/$pkg/desc")"
+        if [ "$desc" = "Package not found" ]; then
+          echo; echo Package $pkg not found or ambiguous name, exiting
+          rm -r "release/$pkg"
+          rm /tmp/cyg-fast-* 2> /dev/null
+          exit 1
+        fi
+      else
+        [ -f release/$pkg/desc ] || {
+          echo; echo Package $pkg not found or ambiguous name, exiting
+          rm /tmp/cyg-fast-* 2> /dev/null
+          exit 1
+        }
       fi
 
+     
       # queue current package
 
       local install="$(awk '/^install: / { print $2; exit }' "release/$pkg/desc")"
       echo "$mirror/$install" >> /tmp/cyg-fast-downloads
       echo "  dir=release/$pkg" >> /tmp/cyg-fast-downloads
       echo $pkg >> /tmp/cyg-fast-packages
+      hasdeps=1
+      
       # resolve dependencies
 
-      local requires="$(grep "^requires: " "release/$pkg/desc" | sed -re 's/^requires: *(.*[^ ]) */\1/g' -e 's/ +/ /g')"
+      local requires=""
+
+      if [ -d deptree ]; then
+        requires=`cat deptree/$pkg/requires`
+      else
+        requires="$(grep "^requires: " "release/$pkg/desc" | sed -re 's/^requires: *(.*[^ ]) */\1/g' -e 's/ +/ /g')"
+      fi
+
       local warn=0
       
       if [ -n "$requires" ]; then
         for package in $requires; do
           local already="$(grep -c "$package " /etc/setup/installed.db)" 
           if [ $already = 0 ]; then
-            hasdeps=1
             CURRENT=( ${CURRENT[@]} $package )
             if [ $? -ne 0 ]; then warn=1; fi
           fi
@@ -545,6 +614,7 @@ function resolve_deps()
 
       if [ -z "$install" ]; then
         echo "Could not find \"install\" in package description: obsolete package?"
+        rm /tmp/cyg-fast-*
         exit 1
       fi
     done
@@ -556,12 +626,13 @@ function resolve_deps()
 
 function cyg-fast-resume-install()
 {
+    echo; echo
     if [ ! -f "/tmp/cyg-fast-packages" ]; then
       echo "Nothing to install, exiting"
       exit 0
     fi
 
-    echo; echo "Following packages will be installed:"
+    echo "Following packages will be installed:"
     for p in $( cat /tmp/cyg-fast-packages ); do
       echo -n $p " "
     done
@@ -641,9 +712,29 @@ function cyg-fast-remove()
 {
     local pkg
     local req
+    valid=0
 
+    findworkspace
     checkpackages "$@"
-    for pkg do
+    
+    CURRENT=""
+    for pkg in $@; do
+      if [ ! -e "/etc/setup/$pkg.lst.gz" -a -z "$force" ]; then
+        echo Package manifest missing, cannot remove $pkg.
+        continue
+      fi
+      valid=1
+      CURRENT=( ${CURRENT[@]} $pkg )
+    done
+
+    [ $valid = 1 ] || exit -1
+    [ -d deptree ] && remove-dep
+
+    echo; echo Warning: dep-tree not found. To check dependency on removing, run cyg-fast build-deptree.
+    echo "         " Only specified packages will be removed.
+    ask_user "Do you wish to continue?" || exit
+
+    for pkg in $CURRENT; do
 
     local already="$(grep -c "^$pkg " /etc/setup/installed.db)"
     if [ $already -eq 0 ]; then
@@ -659,10 +750,6 @@ function cyg-fast-remove()
       fi
     done
 
-    if [ ! -e "/etc/setup/$pkg.lst.gz" -a -z "$force" ]; then
-      echo Package manifest missing, cannot remove $pkg.  Exiting
-      exit 1
-    fi
     echo Removing $pkg
 
     # run preremove scripts
@@ -679,6 +766,72 @@ function cyg-fast-remove()
     echo Package $pkg removed
 
     done
+}
+
+function remove-dep()
+{
+    local pkg
+    REMOVE=""
+    do_remove=0
+
+    echo -n Resolving dependencies...
+
+    until [ -z $CURRENT ]; do
+
+      echo -n .
+      pkgs=${CURRENT[@]}
+      CURRENT=""
+
+      for p in $pkgs; do
+
+        already="$(grep -c "^$p " /etc/setup/installed.db)"
+        removing=`echo ${REMOVE[@]} | grep -c $p`
+        ([ $already -gt 0 ] && [ $removing = 0 ]) || continue
+
+        local dontremove="cygwin coreutils gawk bzip2 tar xz aria2 bash"
+        for req in $dontremove; do
+            if [ "$p" = "$req" ]; then
+            echo; echo cyg-fast cannot remove package $p, exiting
+            exit 1
+          fi
+        done
+      
+        REMOVE=( ${REMOVE[@]} $p )
+        do_remove=1
+
+        [ -f deptree/$p/neededby ] || continue
+        for npkg in `cat deptree/$p/neededby`; do
+          CURRENT=( ${CURRENT[@]} $npkg )
+        done
+
+      done
+    done
+
+    echo; echo
+
+    [ $do_remove = 1 ] || { echo Nothing to remove, exiting; exit -1; }
+
+    echo Following packages will be removed:
+    echo ${REMOVE[@]}
+    ask_user "Do you wish to continue?" || exit
+    
+    for pkg in ${REMOVE[@]}; do
+
+      echo Removing: $pkg
+
+      if [ -e "/etc/preremove/$pkg.sh" ]; then
+        "/etc/preremove/$pkg.sh"
+      fi
+      
+      gzip -cd "/etc/setup/$pkg.lst.gz" | awk '/[^\/]$/ {print "rm -f \"/" $0 "\""}' | sh
+      awk > /tmp/awk.$$ -v pkg="$pkg" '{if (pkg != $1) print $0}' /etc/setup/installed.db
+      rm -f "/etc/postinstall/$pkg.sh.done" "/etc/preremove/$pkg.sh" "/etc/setup/$pkg.lst.gz"
+      mv /etc/setup/installed.db /etc/setup/installed.db-save
+      mv /tmp/awk.$$ /etc/setup/installed.db
+    
+    done
+    echo Done.
+    exit
 }
 
 function invoke_subcommand ()
