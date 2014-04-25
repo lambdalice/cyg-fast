@@ -27,38 +27,15 @@
 
 cyg_fast=$(cd $(dirname ${BASH_SOURCE:-$0}); pwd)/$(basename $0)
 
-TRUSTEDKEYS=( CYGWIN CYGWINPORTS );
-# ./cygwin.pub
-# ------------
-# pub   1024D/676041BA 2008-06-13
-# uid                  Cygwin <cygwin@cygwin.com>
-# sub   1024g/A1DB7B5C 2008-06-13
-TRUSTEDKEY_CYGWIN_MD5="8fe5366fc82289578ab9b6e3c9f1bff9"
-TRUSTEDKEY_CYGWIN_FPR="1169DF9F22734F743AA59232A9A262FF676041BA"
-TRUSTEDKEY_CYGWIN_URL="https://sourceware.org/cgi-bin/cvsweb.cgi/~checkout~/setup/cygwin.pub?rev=2.1&cvsroot=cygwin-apps"
-TRUSTEDKEY_CYGWIN_URL_LATEST="https://sourceware.org/cgi-bin/cvsweb.cgi/~checkout~/setup/cygwin.pub?cvsroot=cygwin-apps"
-# ./ports.gpg
-# -----------
-# pub   1024D/66EE1F94 2008-10-27
-# uid                  Yaakov Selkowitz (Cygwin Ports) <yselkowitz@users.sourceforge.net>
-# sub   4096g/7D66B0D2 2008-10-27
-TRUSTEDKEY_CYGWINPORTS_MD5="4c7904807340411f48f7519173cd600d"
-TRUSTEDKEY_CYGWINPORTS_FPR="45600BB98CA878AA97A70119FF20AF9A66EE1F94"
-TRUSTEDKEY_CYGWINPORTS_URL_LATEST="http://cygwinports.org/ports.gpg"
-
 # this script requires some packages
 
-TAR="$(  which tar  2>/dev/null )"
-GAWK="$( which awk  2>/dev/null )"
-GPGV="$( which gpgv 2>/dev/null )"
-GPG="$(  which gpg  2>/dev/null )"
-ARIA2C="$(  which aria2c  2>/dev/null )"
-if [ -z "$ARIA2C" -o -z "$TAR" -o -z "$GAWK" ]; then
+type aria2c tar gawk &> /dev/null || {
   echo You must install aria2, tar and gawk to use cyg-fast.
   exit 1
-fi
+}
 
-ARIA2C=( "${ARIA2C[@]}" "--conditional-get" "--allow-overwrite" )
+ARIA2C=( "aria2c" "--conditional-get" "--allow-overwrite" )
+
 function usage()
 {
   echo cyg-fast: Installs and removes Cygwin packages.
@@ -72,24 +49,19 @@ function usage()
   echo "  \"cyg-fast packageof <commands or files>\" to locate parent packages"
   echo "  \"cyg-fast pathof <cache|mirror|mirrordir|cache/mirrordir|setup.ini>\""
   echo "                                                          to show path"
-  echo "  \"cyg-fast key-add <files> ...\" to add keys contained in <files>"
-  echo "  \"cyg-fast key-del <keyids> ...\" to remove keys <keyids>"
-  echo "  \"cyg-fast key-list\" to list keys"
-  echo "  \"cyg-fast key-finger\" to list fingerprints"
   echo "  \"cyg-fast upgrade-self\" to upgrade cyg-fast"
   echo "Options:"
   echo "  --charch <arch>          : change archetecture"
   echo "  --use-setuprc            : set cache and mirror with /etc/setup/setup.rc"
   echo "  --ignore-case, -i        : ignore case distinctions for <patterns>"
   echo "  --force                  : force install/remove/fetch trustedkeys"
-  echo "  --no-verify, -X          : Don't verify setup.ini signatures"
-  echo "  --no-check-certificate   : Don't validate the server's certificate"
   echo "  --mirror, -m <url>       : set mirror"
   echo "  --cache, -c <dir>        : set cache"
   echo "  --file, -f <file>        : read package names from file"
   echo "  --noupdate, -u           : don't update setup.ini from mirror"
-  echo "  --rapid, -r              : -X, --no-check-certificate, -u, skip checking MD5"
+  echo "  --rapid, -r              : skip all optional functions"
   echo "  --max-connections <num>  : maximum number of connections"
+  echo "  --yes-to-all, -y         : force yes on ask prompts"
   echo "  --help"
   echo "  --version"
 }
@@ -140,19 +112,12 @@ function findworkspace()
   
   mkdir -p "$cache/$mirrordir/$arch"
   cd "$cache/$mirrordir/$arch"
-  
-  init_gnupg
-  fetch_trustedkeys
 }
 
-function download_and_verify ()
+function download ()
 {
   "${ARIA2C[@]}" "$1" || return 1
   [ -e "${1##*/}" ] || return 1
-  if [ -z "$no_verify" ]; then
-    "${ARIA2C[@]}" "${1}.sig" || return 1
-    [ -e "${1##*/}.sig" ] && verify_signatures "${1##*/}.sig" || { rm -f "${1##*/}" "${1##*/}.sig"; return 1; }
-  fi
   return
 }
 
@@ -187,14 +152,14 @@ function setupini_download ()
   local BASEDIR="$cache/$mirrordir/$arch"
   mkdir -p "$BASEDIR" || { echo -e "\e[31;1mError:\e[30;0m mkdir \"$BASEDIR\" failed."; exit 1; }
   
-  [ $noscripts -ne 0 -o $noupdate -ne 0 ] && return
+  (( noscripts || noupdate )) && return
   
   pushd "$BASEDIR"
   files_backup setup.ini setup.ini.sig setup.bz2 setup.bz2.sig
   
   while true; do
-    download_and_verify "$mirror/$arch/setup.bz2" && { bunzip2 -k setup.bz2 && mv setup setup.ini || rm -f setup.bz2; }
-    download_and_verify "$mirror/$arch/setup.ini" || break
+    download "$mirror/$arch/setup.bz2" && { bunzip2 -k setup.bz2 && mv setup setup.ini || rm -f setup.bz2; }
+    download "$mirror/$arch/setup.ini" || break
     
     files_backup_clean setup.ini setup.ini.sig setup.bz2 setup.bz2.sig
     popd
@@ -250,19 +215,6 @@ function charch ()
   fi
 }
 
-function init_gnupg ()
-{
-  [ -z "$GPG" ] && return
-  export GNUPGHOME="$cache/.cyg-fast"
-  if [ ! -d "$GNUPGHOME" ]; then
-    if ! { mkdir -p "$GNUPGHOME" && chmod 700 "$GNUPGHOME"; } then
-      echo -e "\e[31;1mError:\e[30;0m cannot initialize directory $GNUPGHOME"
-      exit 1
-    fi
-  fi
-  GPG_KEYRING=( --keyring pubring.gpg )
-}
-
 # Usage: ask_user "question?" (optional recognition of YES_TO_ALL=true auto yes)
 function ask_user ()
 {
@@ -279,153 +231,6 @@ function ask_user ()
          2*) return 1 ;;
     esac
   done
-}
-
-# Usage: wget_return_case_md5sum returncode
-function wget_return_case_md5sum ()
-{
-  case "$1" in
-    1) echo "$LABEL: FAILED: Could not download $URL."; return 1 ;;
-    5) echo "$LABEL: WARNING: The SSL certificate is invalid $URL."
-       ask_user "Continue regardless of invalid SSL certificate?" || return 1
-       "${ARIA2C[@]}" "$URL" -o "$FILE"
-       return 0
-    ;;
-    8) echo "$LABEL: FAILED: 404 Not Found $URL." return 1 ;;
-    0) return 0 ;;
-    *) echo -e "\e[31;1mError:\e[30;0m FATAL: wget returned unkown value"; return 1 ;;
-  esac
-}
-
-# Usage: wget_and_check_md5sum label hash url file
-function wget_and_check_md5sum ()
-{
-  local LABEL="$1"
-  local MD5="$2"
-  local URL="$3"
-  local FILE="$4"
-  "${ARIA2C[@]}" `[ -n $no_check_cert ] || echo "--check-certificate"` "$URL" -o "$FILE"
-  wget_return_case_md5sum "$?" || return 1
-  if ! { echo "$MD5 *$FILE" | md5sum -c >& /dev/null; } then
-    echo "$LABEL: FAILED: MD5 hash is not match."
-    return 2
-  fi
-  echo "$LABEL: OK"
-}
-
-function fetch_trustedkeys ()
-{
-  [ -z "$GPG" ] && return
-  local i
-  local FILE="$(mktemp)"
-  local FILE_LATEST="$(mktemp)"
-  for i in "${TRUSTEDKEYS[@]}"; do
-    local LABEL="TRUSTEDKEY_${i}"
-    local MD5="$(eval echo "\$${LABEL}_MD5")"
-    local FPR="$(eval echo "\$${LABEL}_FPR")"
-    local URL="$(eval echo "\$${LABEL}_URL")"
-    local URL_LATEST="$(eval echo "\$${LABEL}_URL_LATEST")"
-    local CASE=""
-    if ( [ -z "$force" ] || [ -n $rapid ] ) && { "${GPG[@]}" --fingerprint --with-colons | grep -q "$FPR"; } then
-      continue
-    fi
-    if [ -n "$URL" ]; then
-      wget_and_check_md5sum "$LABEL" "$MD5" "$URL" "$FILE"
-      CASE+="$?"
-    else
-      CASE+="-"
-    fi
-    if [ -n "$URL_LATEST" ]; then
-      wget_and_check_md5sum "$LABEL" "$MD5" "$URL_LATEST" "$FILE_LATEST"
-      CASE+="$?"
-    else
-      CASE+="-"
-    fi
-    case "$CASE" in
-      00|01|0-)
-        "${GPG[@]}" --import "$FILE"
-      ;;
-      02)
-        echo "Warning: ${LABEL} has been updated."
-        "${GPG[@]}" --import "$FILE"
-      ;;
-      -0)
-        "${GPG[@]}" --import "$FILE_LATEST"
-      ;;
-      10|20)
-        echo -e "\e[31;1mError:\e[30;0m ${LABEL} has miss configuration."
-        exit 1
-      ;;
-      11|1-|-1)
-        echo -e "\e[31;1mError:\e[30;0m Could not download ${LABEL}."
-        exit 1
-      ;;
-      12|-2)
-        echo -e "\e[31;1mError:\e[30;0m ${LABEL} has been updated, maybe. But sometimes it may has been cracked. Be careful !!!"
-        exit 1
-      ;;
-      21|22|2-)
-        echo -e "\e[31;1mError:\e[30;0m ${LABEL} has been cracked, maybe"
-        exit 1
-      ;;
-      --)
-        echo -e "\e[31;1mError:\e[30;0m ${LABEL} has no URL."
-        exit 1
-      ;;
-    esac
-  done
-  rm "$FILE" "$FILE_LATEST"
-}
-
-# Usage: verify_signatures files ...
-function verify_signatures ()
-{
-  while [ $# -gt 0 ]; do
-    if ! "${GPGV[@]}" "${GPG_KEYRING[@]}" "$1"; then
-      echo -e "\e[31;1mError:\e[30;0m BAD signature: $1"
-      return 1
-    fi
-    shift
-  done
-}
-
-# Usage: cyg-fast-key-add pkey ...
-function cyg-fast-key-add ()
-{
-  [ -z "$GPG" ] && { echo -e "\e[31;1mError:\e[30;0m GnuPG is not installed. Prease install gnupg package"; exit 1; }
-  local pkeys
-  for pkey; do
-    pkeys+=( "$(cygpath -a "$pkey" )" )
-  done
-  findworkspace
-  for pkey in "${pkeys[@]}"; do
-    "${GPG[@]}" --import "$pkey"
-  done
-}
-
-# Usage: cyg-fast-key-add keyid ...
-function cyg-fast-key-del ()
-{
-  [ -z "$GPG" ] && { echo -e "\e[31;1mError:\e[30;0m GnuPG is not installed. Prease install gnupg package"; exit 1; }
-  local keyid
-  findworkspace
-  for keyid; do
-    "${GPG[@]}" --batch --yes --delete-key "$keyid"
-  done
-}
-
-function cyg-fast-key-list ()
-{
-  [ -z "$GPG" ] && { echo -e "\e[31;1mError:\e[30;0m GnuPG is not installed. Prease install gnupg package"; exit 1; }
-  findworkspace
-  "${GPG[@]}" --list-keys
-}
-
-function cyg-fast-key-finger ()
-{
-  [ -z "$GPG" ] && { echo -e "\e[31;1mError:\e[30;0m GnuPG is not installed. Prease install gnupg package"; exit 1; }
-  findworkspace
-  "${GPG[@]}" --fingerprint
 }
 
 function cyg-fast-pathof ()
@@ -472,8 +277,6 @@ OPT_FILES=()
 SUBCOMMAND=""
 ignore_case=""
 force=""
-no_verify=""
-no_check_cert=""
 YES_TO_ALL=false
 maxcount=5
 INITIAL_ARGS=( "$@" )
@@ -507,16 +310,6 @@ while [ $# -gt 0 ]; do
       shift
     ;;
 
-    --no-verify|-X)
-      no_verify=1
-      shift
-    ;;
-
-    --no-check-certificate)
-      no_check_cert=1
-      shift
-    ;;
-
     --rapid|-r)
       no_verify=1
       noupdate=1
@@ -541,6 +334,11 @@ while [ $# -gt 0 ]; do
 
     --noupdate|-u)
       noupdate=1
+      shift
+    ;;
+
+    --yes-to-all|-y)
+      YES_TO_ALL=1
       shift
     ;;
 
@@ -576,11 +374,6 @@ while [ $# -gt 0 ]; do
 
   esac
 done
-
-if [ -z "$GPGV" -a -z "$no_verify" ]; then
-  echo -e "\e[31;1mError:\e[30;0m GnuPG is not installed. Prease install gnupg package or use -X option."
-  exit 1
-fi
 
 for file in "${OPT_FILES[@]}"; do
   if [ -f "$file" ]; then
@@ -691,8 +484,7 @@ function cyg-fast-install ()
       CURRENT="${CURRENT[@]} $pkg"
     done
 
-    echo -n "Resolving dependencies..."
-    
+    echo -n "Resolving dependencies.."
     
     touch /tmp/cyg-fast-packages /tmp/cyg-fast-downloads
     resolve_deps
@@ -781,7 +573,6 @@ function cyg-fast-resume-install()
     
     echo "Start downloading..."
     ${ARIA2C[@]} --deferred-input \
-                 `[ "$no_check_cert" = 1 ] || echo "--check-certificate"` \
                  --input-file /tmp/cyg-fast-downloads \
                  -x $maxcount || {
       echo "Interrupted: To resume installing, run \"cyg-fast resume-install\" ."
@@ -860,7 +651,7 @@ function cyg-fast-remove()
       continue
     fi
 
-    local dontremove="cygwin coreutils gawk bzip2 tar xz wget bash"
+    local dontremove="cygwin coreutils gawk bzip2 tar xz aria2 bash"
     for req in $dontremove; do
       if [ "$pkg" = "$req" ]; then
         echo cyg-fast cannot remove package $pkg, exiting
