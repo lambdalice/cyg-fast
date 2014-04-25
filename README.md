@@ -23,7 +23,7 @@ Requirements
 
 cyg-fast requires the cygwin default environment and optional packages below.
 
-* aria2, ca-certificates, gnupg
+* aria2
 
 Quick start
 -----------
@@ -118,11 +118,4 @@ Ex.) Merging to the GPL from the MIT is possible. But merging to the MIT from th
 * [buzain / apt-cyg](https://github.com/buzain/apt-cyg/network)
 * [wuyangnju / apt-cyg](https://github.com/wuyangnju/apt-cyg/network)
 * [takuya / apt-cyg](https://github.com/takuya/apt-cyg/network)
-
-Todo
-------------
-
-* Support multi mirrors: Cygwin setup can use multi mirrors. They are recorded at last-mirror section in '/etc/setup/setup.rc'. It's useful for using [Cygwinports](http://cygwinports.org/).
-* Support completion: Some other forks already supported it. For example, [Milly / apt-cyg](https://github.com/Milly/apt-cyg) under the cfg / apt-cyg fork, [ashumkin / apt-cyg](https://github.com/ashumkin/apt-cyg) and etc supported it.
-* Support upgrade: But maybe, busy resources can not be upgraded, and rebase problem will happen. Cygwin setup resolves by replacing them at next reboot.
 
