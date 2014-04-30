@@ -26,6 +26,7 @@
 # 
 
 cyg_fast=$(cd $(dirname ${BASH_SOURCE:-$0}); pwd)/$(basename $0)
+cyg_fast_dir=$(cd $(dirname ${BASH_SOURCE:-$0}); pwd)
 
 # this script requires some packages
 
@@ -57,8 +58,6 @@ function usage()
   echo "  --mirror, -m <url>       : set mirror"
   echo "  --cache, -c <dir>        : set cache"
   echo "  --file, -f <file>        : read package names from file"
-  echo "  --noupdate, -u           : don't update setup.ini from mirror"
-  echo "  --rapid, -r              : skip all optional functions"
   echo "  --max-connections <num>  : maximum number of connections"
   echo "  --yes-to-all, -y         : force yes on ask prompts"
   echo "  --help"
@@ -73,13 +72,24 @@ function version()
   echo "Copyright (c) 2005-9 Stephen Jungels.  Released under the GPL."
 }
 
+function warning()
+{
+  echo -e "\e[1;33mWarning:\e[30;0m $1"
+}
+
+function error()
+{
+  echo -e "\e[1;31mError:\e[30;0m $1" 1>&2
+}
+
+
 function current_cygarch ()
 {
   arch | sed -e 's/^i686$/x86/g'
 }
 
 if [ `current_cygarch` = "x86" ]; then
-  echo "Warning: x86 env detected: aria2 can't use --conditional-get, always download and overwrite"
+  warning "x86 env detected: aria2 can't use --conditional-get, always download and overwrite"
   ARIA2C=( "aria2c" "--allow-overwrite=true" )
 else
   ARIA2C=( "aria2c" "--conditional-get" "--allow-overwrite" )
@@ -157,7 +167,7 @@ function setupini_download ()
   local BASEDIR="$cache/$mirrordir/$arch"
   mkdir -p "$BASEDIR" || { echo -e "\e[31;1mError:\e[30;0m mkdir \"$BASEDIR\" failed."; exit 1; }
   
-  (( noscripts || noupdate )) && return
+  ( ((noupdate)) && [ -f $cache/$mirrordir/$arch/setup.ini ] ) && return
   
   pushd "$BASEDIR"
   files_backup setup.ini setup.ini.sig setup.bz2 setup.bz2.sig
@@ -175,7 +185,7 @@ function setupini_download ()
   done
   files_restore setup.ini setup.ini.sig setup.bz2 setup.bz2.sig
   popd
-  echo -e "\e[31;1mError:\e[30;0m updating setup.ini, reverting."
+  error "updating setup.ini, reverting."
   return 1
 }
 
@@ -201,7 +211,7 @@ function getrootdir ()
     x86_64)
       cygpath -u "$(< /proc/registry64/HKEY_LOCAL_MACHINE/SOFTWARE/Cygwin/setup/rootdir)" ;;
     *)
-      echo -e "\e[31;1mError:\e[30;0m unknown arch $1" >&2 ;;
+      error "unknown arch $1" ;;
   esac
 }
 
@@ -251,7 +261,7 @@ function cyg-fast-pathof ()
       cache/mirrordir)  echo "$cache/$mirrordir" ;;
       setup.ini)        echo "$cache/$mirrordir/$arch/setup.ini" ;;
       *)
-        echo -e "\e[31;1mError:\e[30;0m in function $FUNCNAME: unknown parameter: $1"
+        error "in function $FUNCNAME: unknown parameter: $1"
         exit 1
     esac
     shift
@@ -260,14 +270,18 @@ function cyg-fast-pathof ()
 
 function cyg-fast-upgrade-self ()
 {
-  local basedir="$(dirname "$(readlink -f "$(which "$0")")")"
-  if [ ! -d "$basedir/.git" ]; then
-    echo -e "\e[31;1mError:\e[30;0m apt-get is not under the git version control."
-    exit 1
-  fi
-  pushd "$basedir"
-  git pull -v
-  popd
+    if [ -d $cyg_fast_dir/.git ]; then
+        git pull -v
+    else
+        mv $cyg_fast $cyg_fast_dir/cyg-fast.bak
+        aria2c "https://raw.githubusercontent.com/lambdalice/cyg-fast/master/cyg-fast" --dir $cyg_fast_dir ||
+        {
+            error "while updating setup.ini"
+            exit 1
+        }
+    fi
+    chmod 775 $cyg_fast
+    echo "Updated cyg-fast"
 }
 
 
@@ -278,7 +292,6 @@ function cyg-fast-help ()
 
 # process options
 
-noscripts=0
 noupdate=0
 OPT_FILES=()
 SUBCOMMAND=""
@@ -318,9 +331,7 @@ while [ $# -gt 0 ]; do
     ;;
 
     --rapid|-r)
-      no_verify=1
-      noupdate=1
-      no_check_cert=1
+      warning "--rapid is obsolete, don't works"
       shift
     ;;
 
@@ -334,13 +345,8 @@ while [ $# -gt 0 ]; do
       shift ; shift
     ;;
 
-    --noscripts)
-      noscripts=1
-      shift
-    ;;
-
     --noupdate|-u)
-      noupdate=1
+      warning "--noupdate is obsolete, don't works"
       shift
     ;;
 
@@ -386,7 +392,7 @@ for file in "${OPT_FILES[@]}"; do
   if [ -f "$file" ]; then
     readarray -t -O ${#ARGS[@]} ARGS < "$file"
   else
-    echo File $file not found, skipping
+    warning "File $file not found, skipping"
   fi
 done
 
@@ -527,16 +533,23 @@ function cyg-fast-install ()
 
     checkpackages "$@"
     findworkspace
+    noupdate=1
     getsetup
+    echo
     
     for pkg do
       local already="$(grep -c "^$pkg " /etc/setup/installed.db)"
       if [ $already -ge 1 ] && [ -z $force ]; then
-        echo Package $pkg is already installed, skipping
+        warning "Package $pkg is already installed, skipping"
         continue
       fi
       CURRENT="${CURRENT[@]} $pkg"
     done
+
+    [ -f /tmp/cyg-fast-packages ] && {
+      warning "Interrupted resolving deps detected, ignoring."
+      rm /tmp/cyg-fast-*  
+    }
 
     echo -n "Resolving dependencies.."
     
@@ -554,7 +567,8 @@ function resolve_deps()
     pkgs=${CURRENT[@]}
     CURRENT=""
     hasdeps=0
-    
+
+        
     for pkg in $pkgs; do
 
       [ -f /tmp/cyg-fast-packages ] && {
@@ -572,14 +586,14 @@ function resolve_deps()
            setup.ini
         local desc="$(< "release/$pkg/desc")"
         if [ "$desc" = "Package not found" ]; then
-          echo; echo Package $pkg not found or ambiguous name, exiting
+          echo; error "Package $pkg not found or ambiguous name, exiting"
           rm -r "release/$pkg"
           rm /tmp/cyg-fast-* 2> /dev/null
           exit 1
         fi
       else
         [ -f release/$pkg/desc -a `echo release/$pkg/desc` != "Package not found" ] || {
-          echo; echo Package $pkg not found or ambiguous name, exiting
+          echo; error "Package $pkg not found or ambiguous name, exiting"
           rm /tmp/cyg-fast-* 2> /dev/null
           exit 1
         }
@@ -617,7 +631,7 @@ function resolve_deps()
       fi
 
       if [ -z "$install" ]; then
-        echo "Could not find \"install\" in package description: obsolete package?"
+        error "Could not find \"install\" in package description: obsolete package?"
         rm /tmp/cyg-fast-*
         exit 1
       fi
@@ -636,7 +650,7 @@ function cyg-fast-resume-install()
       echo "Nothing to install, exiting"
       exit 0
     fi
-
+      
     echo "Following packages will be installed:"
     for p in $( cat /tmp/cyg-fast-packages ); do
       echo -n $p " "
@@ -651,7 +665,7 @@ function cyg-fast-resume-install()
     ${ARIA2C[@]} --input-file /tmp/cyg-fast-downloads \
                  `[ $(current_cygarch) = "x86" ] || echo "--deferred-input"` \
                  -j $maxcount || {
-      echo "Interrupted: To resume installing, run \"cyg-fast resume-install\" ."
+      echo -e "\e[1;34mInterrupted:\e[0m To resume installing, run \"cyg-fast resume-install\" ."
       exit 1
     }
 
@@ -665,14 +679,14 @@ function cyg-fast-resume-install()
       
       # check the md5
 
-      if [ -z $rapid ]; then
+      while true; do
         local digest="$(awk '/^install: / { print $4; exit }' "desc")"
         local digactual="$(md5sum $file | awk '{print $1}')"
         if [ "$digest" != "$digactual" ]; then
-          echo MD5 sum did not match, exiting
-          exit 1
-        fi
-      fi
+          error "MD5 sum did not match, retry downloading..."
+          aria2c $mirror/$install
+        else break; fi
+      done
       
       echo "Unpacking: $pkg"
       tar > "/etc/setup/$pkg.lst" xvf "$file" -C /
@@ -692,7 +706,7 @@ function cyg-fast-resume-install()
     # run all postinstall scripts
     
     local pis="$(ls /etc/postinstall/*.sh 2>/dev/null | wc -l)"
-    if [ $pis -gt 0 -a $noscripts -ne 1 ]; then
+    if [ $pis -gt 0 ]; then
       echo Running postinstall scripts...
       for script in /etc/postinstall/*.sh; do
         $script
@@ -721,7 +735,9 @@ function cyg-fast-remove()
 
     findworkspace
     checkpackages "$@"
-    
+
+    echo
+
     CURRENT=""
     for pkg in $@; do
       if [ ! -e "/etc/setup/$pkg.lst.gz" -a -z "$force" ]; then
@@ -735,7 +751,7 @@ function cyg-fast-remove()
     [ $valid = 1 ] || exit -1
     [ -d deptree ] && remove-dep
 
-    echo; echo Warning: dep-tree not found. To check dependency on removing, run cyg-fast build-deptree.
+    echo; warning "dep-tree not found. To check dependency on removing, run cyg-fast build-deptree."
     echo "         " Only specified packages will be removed.
     ask_user "Do you wish to continue?" || exit
 
@@ -743,14 +759,14 @@ function cyg-fast-remove()
 
     local already="$(grep -c "^$pkg " /etc/setup/installed.db)"
     if [ $already -eq 0 ]; then
-      echo Package $pkg is not installed, skipping
+      warning "Package $pkg is not installed, skipping"
       continue
     fi
 
     local dontremove="cygwin coreutils gawk bzip2 tar xz aria2 bash"
     for req in $dontremove; do
       if [ "$pkg" = "$req" ]; then
-        echo cyg-fast cannot remove package $pkg, exiting
+        error "cyg-fast cannot remove package $pkg, exiting"
         exit 1
       fi
     done
@@ -796,7 +812,7 @@ function remove-dep()
         local dontremove="cygwin coreutils gawk bzip2 tar xz aria2 bash"
         for req in $dontremove; do
             if [ "$p" = "$req" ]; then
-            echo; echo cyg-fast cannot remove package $p, exiting
+            echo; error "cyg-fast cannot remove package $p, exiting"
             exit 1
           fi
         done
@@ -814,7 +830,7 @@ function remove-dep()
 
     echo; echo
 
-    [ $do_remove = 1 ] || { echo Nothing to remove, exiting; exit -1; }
+    [ $do_remove = 1 ] || { echo Nothing to remove, exiting; exit; }
 
     echo Following packages will be removed:
     echo ${REMOVE[@]}
@@ -847,7 +863,7 @@ function invoke_subcommand ()
     if type "$ACTION" >& /dev/null; then
       "$ACTION" "${ARGS[@]}"
     else
-      echo -e "\e[31;1mError:\e[30;0m unknown subcommand: $SUBCOMMAND"
+      error "unknown subcommand: $SUBCOMMAND"
       exit 1
     fi
 }
