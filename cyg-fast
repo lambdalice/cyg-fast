@@ -238,7 +238,7 @@ function ask_user ()
   while true; do
     [ -n "$2" ] && { local pmt="$2"; local def=; }
     [ -n "$2" ] || { local pmt="y/n";local def=; }
-    $YES_TO_ALL && { local RPY=Y;local def=Y; }
+    [ $YES_TO_ALL = 1 ] && { local RPY=Y;local def=Y; }
     [ -z "$def" ] && { echo -ne "$1 ";read -p "[$pmt] " RPY; }
     [ -z "$RPY" ] && { local RPY=$def; }
     case "$RPY" in
