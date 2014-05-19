@@ -54,6 +54,7 @@ function usage()
   echo "  --charch <arch>          : change archetecture"
   echo "  --use-setuprc            : set cache and mirror with /etc/setup/setup.rc"
   echo "  --ignore-case, -i        : ignore case distinctions for <patterns>"
+  echo "  --no-file-alloc, -n      : doesn't allocate file space before downloading"
   echo "  --force                  : force install/remove/fetch trustedkeys"
   echo "  --mirror, -m <url>       : set mirror"
   echo "  --cache, -c <dir>        : set cache"
@@ -87,14 +88,6 @@ function current_cygarch ()
 {
   arch | sed -e 's/^i686$/x86/g'
 }
-
-if [ `current_cygarch` = "x86" ]; then
-  warning "x86 env detected: aria2 can't use --conditional-get, always download and overwrite"
-  ARIA2C=( "aria2c" "--allow-overwrite=true" )
-else
-  ARIA2C=( "aria2c" "--conditional-get" "--allow-overwrite" )
-fi
-
 
 function mirror_to_mirrordir ()
 {
@@ -180,7 +173,7 @@ function setupini_download ()
     popd
     echo "Updated setup.ini"
     noupdate=1
-    ask_user "Would you like to generate dep-tree now?" && cyg-fast-build-deptree
+    echo Hint: Run cyg-fast build-deptree to enable dependency checking on removing.
     return
   done
   files_restore setup.ini setup.ini.sig setup.bz2 setup.bz2.sig
@@ -298,6 +291,7 @@ SUBCOMMAND=""
 ignore_case=""
 force=""
 YES_TO_ALL=false
+file_alloc=1
 maxcount=5
 INITIAL_ARGS=( "$@" )
 ARGS=()
@@ -350,6 +344,11 @@ while [ $# -gt 0 ]; do
       shift
     ;;
 
+    --no-file-alloc|-n)
+      file_alloc=0
+      shift
+    ;;
+
     --yes-to-all|-y)
       YES_TO_ALL=1
       shift
@@ -395,6 +394,19 @@ for file in "${OPT_FILES[@]}"; do
     warning "File $file not found, skipping"
   fi
 done
+
+# aria2 setup
+
+if [ `current_cygarch` = "x86" ]; then
+  warning "x86 env detected: aria2 can't use --conditional-get, always download and overwrite"
+  ARIA2C=( "aria2c" "--allow-overwrite=true" )
+else
+  ARIA2C=( "aria2c" "--conditional-get" "--allow-overwrite" )
+fi
+
+if [ $file_alloc = 0 ]; then
+  ARIA2C=( ${ARIA2C[@]} "--file-allocation=none" )
+fi
 
 
 
@@ -721,8 +733,7 @@ function cyg-fast-resume-install()
 function quit()
 {
     echo "Removing tmp files..."
-    rm /tmp/cyg-fast-downloads
-    rm /tmp/cyg-fast-packages
+    rm /tmp/cyg-fast-*
     echo Done.
     exit
 }
