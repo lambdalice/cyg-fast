@@ -16,7 +16,6 @@ The syntax is similar to apt-get. Usage examples:
 * "cyg-fast describe &lt;pattern(s)&gt;" to describe packages matching patterns
 * "cyg-fast packageof &lt;commands or files&gt;" to locate parent packages
 * "cyg-fast pathof &lt;cache|mirror|mirrordir|cache/mirrordir&gt;" to show path"
-* "cyg-fast build-deptree" to build dependency tree to make install/remove faster
 
 Requirements
 -----------
@@ -65,13 +64,9 @@ Of course, you must install both environments of x86_64 and x86, beforehand.
 
 cyg-fast finds all depending packages before downloading and installing.
 
-### Generate dependency tree and check dependency on removing
+### Check dependency on removing
 
-You can generate "dependency tree" using ```cyg-fast build-deptree```
-
-to make installing faster and enable dependency checking on removing.
-
-Generated dep-tree is in $cache/$mirrordir/$arch/deptree .
+You can remove all packages depending on packages you want to remove.
 
 ### Resume installation when downloading fails
 
