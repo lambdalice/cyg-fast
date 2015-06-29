@@ -624,13 +624,13 @@ function cyg-fast-resume-install()
       file="$(basename "$install")"
       cd "release/$pkg"
       
-      # check the md5
+      # check the sha512
 
       while true; do
         local digest="$(awk '/^install: / { print $4; exit }' "desc")"
-        local digactual="$(md5sum $file | awk '{print $1}')"
+        local digactual="$(sha512sum $file | awk '{print $1}')"
         if [ "$digest" != "$digactual" ]; then
-          error "MD5 sum did not match, retry downloading..."
+          error "SHA512 sum did not match, retry downloading..."
           aria2c $mirror/$install
         else break; fi
       done
