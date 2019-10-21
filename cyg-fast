@@ -25,8 +25,9 @@
 # THE SOFTWARE.
 # 
 
-cyg_fast=$(cd $(dirname ${BASH_SOURCE:-$0}); pwd)/$(basename $0)
-cyg_fast_dir=$(cd $(dirname ${BASH_SOURCE:-$0}); pwd)
+dir_name=$(dirname "$0")
+cyg_fast=$(cd "${dir_name}"; pwd)/$(basename "$0")
+cyg_fast_dir=$(cd "${dir_name}"; pwd)
 
 # this script requires some packages
 
@@ -97,7 +98,7 @@ function findworkspace()
 {
   # default working directory, mirror and architecture
 
-  mirror=ftp://mirror.mcs.anl.gov/pub/cygwin
+  mirror=ftp://cygwin.osuosl.org/pub/cygwin
   arch="$(current_cygarch)"
   cache=/setup
   
@@ -114,8 +115,8 @@ function findworkspace()
   mirror="${mirror%/}"
   mirrordir="$(mirror_to_mirrordir "$mirror/")"
 
-  echo Working directory is $cache
-  echo Mirror is $mirror
+  echo Working directory is "$cache"
+  echo Mirror is "$mirror"
   
   mkdir -p "$cache/$mirrordir/$arch"
   cd "$cache/$mirrordir/$arch"
@@ -159,7 +160,7 @@ function setupini_download ()
   local BASEDIR="$cache/$mirrordir/$arch"
   mkdir -p "$BASEDIR" || { echo -e "\e[31;1mError:\e[30;0m mkdir \"$BASEDIR\" failed."; exit 1; }
   
-  ( ((noupdate)) && [ -f $cache/$mirrordir/$arch/setup.ini ] ) && return
+  ( ((noupdate)) && [ -f "$cache"/"$mirrordir"/"$arch"/setup.ini ] ) && return
   
   pushd "$BASEDIR"
   files_backup setup.ini setup.ini.sig setup.bz2 setup.bz2.sig
@@ -229,7 +230,7 @@ function ask_user ()
   while true; do
     [ -n "$2" ] && { local pmt="$2"; local def=; }
     [ -n "$2" ] || { local pmt="y/n";local def=; }
-    [ $YES_TO_ALL = 1 ] && { local RPY=Y;local def=Y; }
+    [ "$YES_TO_ALL" = "true" ] && { local RPY=Y;local def=Y; }
     [ -z "$def" ] && { echo -ne "$1 ";read -p "[$pmt] " RPY; }
     [ -z "$RPY" ] && { local RPY=$def; }
     case "$RPY" in
@@ -261,17 +262,17 @@ function cyg-fast-pathof ()
 
 function cyg-fast-upgrade-self ()
 {
-    if [ -d $cyg_fast_dir/.git ]; then
+    if [ -d "$cyg_fast_dir"/.git ]; then
         git pull -v
     else
-        mv $cyg_fast $cyg_fast_dir/cyg-fast.bak
-        aria2c "https://raw.githubusercontent.com/lambdalice/cyg-fast/master/cyg-fast" --dir $cyg_fast_dir ||
+        mv "$cyg_fast" "$cyg_fast_dir"/cyg-fast.bak
+        aria2c "https://raw.githubusercontent.com/lambdalice/cyg-fast/master/cyg-fast" --dir "$cyg_fast_dir" ||
         {
             error "while updating setup.ini"
             exit 1
         }
     fi
-    chmod 775 $cyg_fast
+    chmod 775 "$cyg_fast"
     echo "Updated cyg-fast"
 }
 
@@ -348,7 +349,7 @@ while [ $# -gt 0 ]; do
     ;;
 
     --yes-to-all|-y)
-      YES_TO_ALL=1
+      YES_TO_ALL=true
       shift
     ;;
 
@@ -367,7 +368,7 @@ while [ $# -gt 0 ]; do
         OPT_FILES+=( "$2" )
         shift
       else
-        echo 1>&2 No file name provided, ignoring $1
+        echo 1>&2 No file name provided, ignoring "$1"
       fi
       shift
     ;;
@@ -395,7 +396,7 @@ done
 
 # aria2 setup
 
-if [ `current_cygarch` = "x86" ]; then
+if [ "$(current_cygarch)" = "x86" ]; then
   warning "x86 env detected: aria2 can't use --conditional-get, always download and overwrite"
   ARIA2C=( "aria2c" "--allow-overwrite=true" )
 else
@@ -478,9 +479,9 @@ function cyg-fast-packageof ()
       fi
       for manifest in /etc/setup/*.lst.gz; do
         local found="$(gzip -cd "$manifest" | grep -c "$key")"
-        if [ $found -gt 0 ]; then
-          local package="$(echo $manifest | sed -e "s:/etc/setup/::" -e "s/.lst.gz//")"
-          echo Found $key in the package $package
+        if [ "$found" -gt 0 ]; then
+          local package="$(echo "$manifest" | sed -e "s:/etc/setup/::" -e "s/.lst.gz//")"
+          echo Found "$key" in the package "$package"
         fi
       done
     done
@@ -502,7 +503,7 @@ function cyg-fast-install ()
     
     for pkg do
       local already="$(grep -c "^$pkg " /etc/setup/installed.db)"
-      if [ $already -ge 1 ] && [ -z $force ]; then
+      if [ "$already" -ge 1 ] && [ -z $force ]; then
         warning "Package $pkg is already installed, skipping"
         continue
       fi
@@ -536,13 +537,13 @@ function resolve_deps()
 
       [ -f /tmp/cyg-fast-packages ] && {
         local installing="$( grep -c "$pkg" /tmp/cyg-fast-packages)"
-        [ $installing = 0 ] || continue
+        [ "$installing" -eq 0 ] || continue
       }
 
       # look for package and save desc file
  
       mkdir -p "release/$pkg"
-      awk > "release/$pkg/desc" -v package=`echo $pkg` \
+      awk > "release/$pkg/desc" -v package="$pkg" \
         'BEGIN{RS="\n\n@ "; FS="\n"} {if ($1 == package) {desc = $0; px++}} \
         END {if (px == 1 && desc != "") print desc; else print "Package not found"}' \
         setup.ini
@@ -559,7 +560,7 @@ function resolve_deps()
       local install="$(awk '/^install: / { print $2; exit }' "release/$pkg/desc")"
       echo "$mirror/$install" >> /tmp/cyg-fast-downloads
       echo "  dir=release/$pkg" >> /tmp/cyg-fast-downloads
-      echo $pkg >> /tmp/cyg-fast-packages
+      echo "$pkg" >> /tmp/cyg-fast-packages
       hasdeps=1
       
       # resolve dependencies
@@ -571,8 +572,8 @@ function resolve_deps()
       if [ -n "$requires" ]; then
         for package in $requires; do
           local already="$(grep -c "$package " /etc/setup/installed.db)" 
-          if [ $already = 0 ]; then
-            CURRENT=( ${CURRENT[@]} $package )
+          if [ "$already" -eq 0 ]; then
+            CURRENT=( ${CURRENT[@]} "$package" )
           fi
         done
       fi
@@ -586,7 +587,7 @@ function resolve_deps()
     
     # tailcall
 
-    [ $hasdeps = 0 ] && break;
+    [ "$hasdeps" -eq 0 ] && break;
     done
 }
 
@@ -600,18 +601,18 @@ function cyg-fast-resume-install()
       
     echo "Following packages will be installed:"
     for p in $( cat /tmp/cyg-fast-packages ); do
-      echo -n $p " "
+      echo -n "$p" " "
     done
     echo; ask_user "Do you wish to continue?" || quit
 
-    [ $RESUME_INSTALL = 0 ] || findworkspace
+    [ "$RESUME_INSTALL" -eq 0 ] || findworkspace
     
     # download all
     
     echo "Start downloading..."
     ${ARIA2C[@]} --input-file /tmp/cyg-fast-downloads \
-                 `[ $(current_cygarch) = "x86" ] || echo "--deferred-input"` \
-                 -j $maxcount || {
+                 $([ "$(current_cygarch)" = "x86" ] || echo "--deferred-input") \
+                 -j "$maxcount" || {
       echo -e "\e[1;34mInterrupted:\e[0m To resume installing, run \"cyg-fast resume-install\" ."
       exit 1
     }
@@ -628,10 +629,10 @@ function cyg-fast-resume-install()
 
       while true; do
         local digest="$(awk '/^install: / { print $4; exit }' "desc")"
-        local digactual="$(sha512sum $file | awk '{print $1}')"
+        local digactual="$(sha512sum "$file" | awk '{print $1}')"
         if [ "$digest" != "$digactual" ]; then
           error "SHA512 sum did not match, retry downloading..."
-          aria2c $mirror/$install
+          aria2c "$mirror"/"$install"
         else break; fi
       done
       
@@ -642,7 +643,7 @@ function cyg-fast-resume-install()
     
       # update the package database
 
-      awk > /tmp/awk.$$ -v pkg="$pkg" -v bz=$file \
+      awk > /tmp/awk.$$ -v pkg="$pkg" -v bz="$file" \
         '{if (ins != 1 && pkg < $1) {print pkg " " bz " 0"; ins=1}; print $0} \
         END{if (ins != 1) print pkg " " bz " 0"}' \
         /etc/setup/installed.db
@@ -652,12 +653,13 @@ function cyg-fast-resume-install()
     
     # run all postinstall scripts
     
-    local pis="$(ls /etc/postinstall/*.sh 2>/dev/null | wc -l)"
-    if [ $pis -gt 0 ]; then
+    local pis="$(find /etc/postinstall/ -maxdepth 1 -name '*.sh' 2>/dev/null | wc -l)"
+
+    if [ "$pis" -gt 0 ]; then
       echo Running postinstall scripts...
       for script in /etc/postinstall/*.sh; do
         $script
-        mv $script $script.done
+        mv "$script" "$script.done"
       done
     fi
     quit
@@ -686,15 +688,15 @@ function cyg-fast-remove()
 
     CURRENT=""
     for pkg in $@; do
-      if [ ! -e "/etc/setup/$pkg.lst.gz" -a -z "$force" ]; then
-        echo Package manifest missing, cannot remove $pkg.
+      if [ ! -e "/etc/setup/$pkg.lst.gz" ] && [ -z "$force" ]; then
+        echo Package manifest missing, cannot remove "$pkg".
         continue
       fi
       valid=1
-      CURRENT=( ${CURRENT[@]} $pkg )
+      CURRENT=( ${CURRENT[@]} "$pkg" )
     done
 
-    [ $valid = 1 ] || exit -1
+    [ "$valid" -eq 1 ] || exit -1
     remove-dep
 }
 
@@ -706,7 +708,7 @@ function remove-dep()
 
     echo -n Resolving dependencies...
 
-    until [ -z $CURRENT ]; do
+    until [ -z "$CURRENT" ]; do
 
       echo -n .
       pkgs=${CURRENT[@]}
@@ -715,8 +717,8 @@ function remove-dep()
       for p in $pkgs; do
 
         already="$(grep -c "^$p " /etc/setup/installed.db)"
-        removing=`echo ${REMOVE[@]} | grep -c $p`
-        ([ $already -gt 0 ] && [ $removing = 0 ]) || continue
+        removing=$(echo ${REMOVE[@]} | grep -c "$p")
+        { [ "$already" -gt 0 ] && [ "$removing" -eq 0 ]; } || continue
 
         local dontremove="cygwin coreutils gawk bzip2 tar xz aria2 bash"
         for req in $dontremove; do
@@ -726,20 +728,20 @@ function remove-dep()
           fi
         done
       
-        REMOVE=( ${REMOVE[@]} $p )
+        REMOVE=( ${REMOVE[@]} "$p" )
         do_remove=1
 
-        neededby=`awk '
+        neededby=$(awk '
           /^@ / {
             pn = $2
           }
           $0 ~ "^requires: .*"query {
             print pn
           }
-          ' query="$p" setup.ini`
+          ' query="$p" setup.ini)
         
         for npkg in $neededby; do
-          CURRENT=( ${CURRENT[@]} $npkg )
+          CURRENT=( ${CURRENT[@]} "$npkg" )
         done
 
       done
@@ -747,7 +749,7 @@ function remove-dep()
 
     echo; echo
 
-    [ $do_remove = 1 ] || { echo Nothing to remove, exiting; exit; }
+    [ "$do_remove" -eq 1 ] || { echo Nothing to remove, exiting; exit; }
 
     echo Following packages will be removed:
     echo ${REMOVE[@]}
@@ -755,7 +757,7 @@ function remove-dep()
     
     for pkg in ${REMOVE[@]}; do
 
-      echo Removing: $pkg
+      echo Removing: "$pkg"
 
       if [ -e "/etc/preremove/$pkg.sh" ]; then
         "/etc/preremove/$pkg.sh"
